@@ -146,11 +146,16 @@ function renderHouseConfig(){
 }
 
 function render(){
- $('turn').textContent=teams.length?(finished?'Partida encerrada':teams[turn]?.name||'Partida encerrada'):'Configure as equipes';
- $('teams').innerHTML=teams.map((t,i)=>`<div class="team"><span class="dot" style="background:${t.color}"></span><span>${t.name}</span><b style="margin-left:auto">${teamFinished[i]?'Concluiu':positions[i]===-1?'Início':`Casa ${getHouseLabel(i,positions[i])}`}${teamRoutes[i]?' · '+(teamRoutes[i]==='A'?'Fígado':'Estômago'):''}</b>${i===turn&&!finished&&!teamFinished[i]?' ◀':''}</div>`).join('');
- $('roll').disabled=finished||lastMove!==null||!teams.length||teamFinished[turn];
- $('next').disabled=finished||lastMove!==null;
- $('history').innerHTML=history.slice(-30).map(x=>`<li>${x}</li>`).join('');drawTokens();renderHouseConfig();
+ const turnEl=$('turn');
+ if(turnEl) turnEl.textContent=teams.length?(finished?'Partida encerrada':teams[turn]?.name||'Partida encerrada'):'Configure as equipes';
+ // Os painéis laterais de equipes e histórico não existem no layout compacto.
+ // A renderização deve continuar mesmo quando esses elementos forem omitidos.
+ const teamsEl=$('teams');
+ if(teamsEl) teamsEl.innerHTML=teams.map((t,i)=>`<div class="team"><span class="dot" style="background:${t.color}"></span><span>${t.name}</span><b style="margin-left:auto">${teamFinished[i]?'Concluiu':positions[i]===-1?'Início':`Casa ${getHouseLabel(i,positions[i])}`}${teamRoutes[i]?' · '+(teamRoutes[i]==='A'?'Fígado':'Estômago'):''}</b>${i===turn&&!finished&&!teamFinished[i]?' ◀':''}</div>`).join('');
+ const rollEl=$('roll'); if(rollEl) rollEl.disabled=finished||lastMove!==null||!teams.length||teamFinished[turn];
+ const nextEl=$('next'); if(nextEl) nextEl.disabled=finished||lastMove!==null;
+ const historyEl=$('history'); if(historyEl) historyEl.innerHTML=history.slice(-30).map(x=>`<li>${x}</li>`).join('');
+ drawTokens();renderHouseConfig();
 }
 function drawTokens(){
  let svg=$('overlay');if(!svg)return;svg.innerHTML='';
