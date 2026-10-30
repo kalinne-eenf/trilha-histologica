@@ -79,6 +79,19 @@ const colors=['#e85d75','#3985d6','#e5a52e','#48a477','#9565c7','#e47b36','#36ae
 let teams=[],turn=0,positions=[],houses=Array.from({length:75},(_,i)=>i+1),history=[],lastMove=null,moveUndoStack=[],calibrating=false,calibrationMode=false,branchAt=7,branchRoutes=[],routeData={before:[],routeA:[],routeB:[],after:[]},teamRoutes=[],questions={},used={},houseTypes={},finished=false,timerId=null,timerRemaining=0,currentQuestionImage="",teamStats=[],teamFinished=[];
 const $=id=>document.getElementById(id);
 const structureNames=initialTeamBanks.map(b=>b.name);
+// Banco complementar editável: preserva o banco original e grava apenas acréscimos/edições no navegador.
+const CUSTOM_BANK_STORAGE_KEY='trilhaHistologica_customQuestionBank_v1';
+let customQuestionBank={};
+try{customQuestionBank=JSON.parse(localStorage.getItem(CUSTOM_BANK_STORAGE_KEY)||'{}')||{};}catch(e){customQuestionBank={};}
+function saveCustomQuestionBank(){localStorage.setItem(CUSTOM_BANK_STORAGE_KEY,JSON.stringify(customQuestionBank));}
+function customQuestionsFor(structureIndex,category){
+ const key=String(structureIndex);
+ if(!customQuestionBank[key])customQuestionBank[key]={};
+ if(!Array.isArray(customQuestionBank[key][category]))customQuestionBank[key][category]=[];
+ return customQuestionBank[key][category];
+}
+function escapeHTML(value){return String(value??'').replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));}
+
 function setupNames(){let n=+$('nTeams').value;$('teamSetup').innerHTML='';for(let i=0;i<n;i++){let d=document.createElement('div');d.className='field';d.innerHTML=`<label>Estrutura da equipe ${i+1}</label><select data-structure="${i}">${structureNames.map((name,j)=>`<option value="${j}" ${j===i?'selected':''}>${name}</option>`).join('')}</select><label>Nome exibido</label><input value="${structureNames[i]}" data-team="${i}" placeholder="Nome da equipe">`;let sel=d.querySelector('select');let inp=d.querySelector('input');sel.onchange=()=>{if(!inp.dataset.edited)inp.value=structureNames[+sel.value]};inp.oninput=()=>inp.dataset.edited='1';$('teamSetup').append(d)}}
 $('nTeams').onchange=setupNames;setupNames();
 function say(t){$('notice').textContent=t}
@@ -201,11 +214,13 @@ function openHowToPlay(){openModal(`<h2>📖 Como jogar — resumo</h2>
 
 function openQuestionBankOverview(){
  const html=`<h2>🗂️ Banco de perguntas</h2>
- <p>Escolha a estrutura (independente da quantidade de equipes da partida) e o tipo de casa. Assim você consulta, por exemplo, Microscópio — Cavidade oral/língua ou Casa comum — Esôfago.</p>
+ <p>Consulte o banco original e suas questões adicionais. As novas questões ficam salvas neste navegador, sem alterar o arquivo principal do jogo.</p>
  <div class="setupgrid">
-  <label class="field">Estrutura / equipe<select id="bankTeam">${initialTeamBanks.map((b,i)=>`<option value="${i}">${b.name}</option>`).join('')}</select></label>
+  <label class="field">Estrutura<select id="bankTeam">${initialTeamBanks.map((b,i)=>`<option value="${i}">${escapeHTML(b.name)}</option>`).join('')}</select></label>
   <label class="field">Tipo de casa<select id="bankCategory"><option value="normal">Casa comum</option><option value="microscope">Casa do Microscópio</option><option value="flash">Casa Relâmpago</option><option value="doctor">Casa do Médico</option><option value="error">Casa do Erro Histológico</option><option value="all">Todas as casas desta estrutura</option></select></label>
- </div><div id="bankQuestionList" style="max-height:58vh;overflow:auto;margin:12px 0;padding:4px"></div>
+ </div>
+ <div class="row"><button id="manageBank">＋ Gerenciar / adicionar questões</button><button class="secondary" id="exportCustomBank">Exportar minhas questões</button><label class="secondary" style="padding:10px 14px;border-radius:12px;cursor:pointer;font-weight:650">Importar questões<input id="importCustomBank" type="file" accept="application/json,.json" style="display:none"></label></div>
+ <div id="bankQuestionList" style="max-height:58vh;overflow:auto;margin:12px 0;padding:4px"></div>
  <div class="row"><button id="closeBanks">Voltar</button></div>`;
  openModal(html);
  const list=$('bankQuestionList');
@@ -214,9 +229,41 @@ function openQuestionBankOverview(){
   const names={normal:'Casa comum',microscope:'Casa do Microscópio',flash:'Casa Relâmpago',doctor:'Casa do Médico',error:'Casa do Erro Histológico'};
   const data={normal:b.normal||[],microscope:b.microscope||[],flash:b.flash||[],doctor:supplementalBanks.doctor||[],error:supplementalBanks.errorByTeam[ti]||[]};
   const cats=cat==='all'?['normal','microscope','flash','doctor','error']:[cat];
-  list.innerHTML=cats.map(k=>{const arr=data[k]||[];return `<section style="margin-bottom:18px"><h3>${names[k]} — ${b.name}</h3><p class="muted">${arr.length} pergunta(s) cadastrada(s)</p>`+(arr.length?arr.map((q,j)=>{const txt=typeof q==='string'?q:(q.text||'Pergunta');const ans=typeof q==='object'?(q.answer||'Gabarito não cadastrado'):'Gabarito não cadastrado';return `<details style="padding:10px;border-bottom:1px solid var(--line)"><summary><b>${j+1}. ${txt.replace(/</g,'&lt;').slice(0,180)}</b></summary><p style="white-space:pre-wrap">${txt.replace(/</g,'&lt;')}</p><p><b>Gabarito:</b> <span style="white-space:pre-wrap">${ans.replace(/</g,'&lt;')}</span></p></details>`}).join(''):'<p class="muted">Ainda não há perguntas cadastradas para esta estrutura nesta modalidade.</p>')+'</section>'}).join('');
+  list.innerHTML=cats.map(k=>{const original=data[k]||[];const added=(k==='doctor'?customQuestionsFor(ti,k):customQuestionsFor(ti,k));const arr=[...original,...added];return `<section style="margin-bottom:18px"><h3>${names[k]} — ${escapeHTML(b.name)}</h3><p class="muted">${original.length} original(is) · ${added.length} adicionada(s) por você</p>`+(arr.length?arr.map((q,j)=>{const txt=typeof q==='string'?q:(q.text||'Pergunta');const ans=typeof q==='object'?(q.answer||'Gabarito não cadastrado'):'Gabarito não cadastrado';const isCustom=j>=original.length;const editButton=isCustom?`<button class="secondary" data-edit-q="${k}:${j-original.length}">Editar</button> <button class="warn" data-delete-q="${k}:${j-original.length}">Excluir</button>`:'';return `<details style="padding:10px;border-bottom:1px solid var(--line)"><summary><b>${j+1}. ${escapeHTML(txt).slice(0,180)}</b> ${isCustom?'<span class="muted">(sua questão)</span>':''}</summary><p style="white-space:pre-wrap">${escapeHTML(txt)}</p><p><b>Gabarito:</b> <span style="white-space:pre-wrap">${escapeHTML(ans)}</span></p>${k==='microscope'&&q&&typeof q==='object'&&q.image?`<img src="${q.image}" alt="Imagem da questão" style="display:block;max-width:220px;max-height:140px;object-fit:contain;border-radius:8px;margin:8px 0">`:''}${editButton}</details>`}).join(''):'<p class="muted">Ainda não há perguntas cadastradas nesta modalidade.</p>')+'</section>'}).join('');
+  list.querySelectorAll('[data-edit-q]').forEach(btn=>btn.onclick=()=>{const [k,j]=btn.dataset.editQ.split(':');openQuestionEditor(ti,k,+j,renderBank)});
+  list.querySelectorAll('[data-delete-q]').forEach(btn=>btn.onclick=()=>{const [k,j]=btn.dataset.deleteQ.split(':');if(confirm('Excluir esta questão adicional?')){customQuestionsFor(ti,k).splice(+j,1);saveCustomQuestionBank();renderBank();}});
  }
- $('bankTeam').onchange=renderBank;$('bankCategory').onchange=renderBank;$('closeBanks').onclick=closeModal;renderBank();
+ $('bankTeam').onchange=renderBank;$('bankCategory').onchange=renderBank;$('closeBanks').onclick=closeModal;
+ $('manageBank').onclick=()=>openQuestionEditor(+$('bankTeam').value,$('bankCategory').value==='all'?'normal':$('bankCategory').value,null,renderBank);
+ $('exportCustomBank').onclick=()=>{const blob=new Blob([JSON.stringify(customQuestionBank,null,2)],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='minhas-questoes-trilha-histologica.json';a.click();URL.revokeObjectURL(a.href);};
+ $('importCustomBank').onchange=async e=>{const file=e.target.files?.[0];if(!file)return;try{const data=JSON.parse(await file.text());if(!data||typeof data!=='object'||Array.isArray(data))throw new Error('Formato inválido');for(const [key,cats] of Object.entries(data)){if(!/^\d+$/.test(key)||!cats||typeof cats!=='object')continue;for(const cat of ['normal','microscope','flash','doctor','error'])if(Array.isArray(cats[cat]))customQuestionsFor(+key,cat).push(...cats[cat].filter(q=>q&&typeof q.text==='string'));}saveCustomQuestionBank();renderBank();alert('Questões importadas!');}catch(err){alert('Não foi possível importar: '+err.message);}};
+ renderBank();
+}
+async function compressQuestionImage(file){
+ const source=await new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result);reader.onerror=()=>reject(new Error('Falha na leitura do arquivo.'));reader.readAsDataURL(file);});
+ const img=await new Promise((resolve,reject)=>{const image=new Image();image.onload=()=>resolve(image);image.onerror=()=>reject(new Error('Imagem inválida.'));image.src=source;});
+ const maxSide=1500,scale=Math.min(1,maxSide/Math.max(img.naturalWidth,img.naturalHeight));const canvas=document.createElement('canvas');canvas.width=Math.max(1,Math.round(img.naturalWidth*scale));canvas.height=Math.max(1,Math.round(img.naturalHeight*scale));canvas.getContext('2d').drawImage(img,0,0,canvas.width,canvas.height);
+ return canvas.toDataURL('image/jpeg',0.84);
+}
+function openQuestionEditor(structureIndex,category,editIndex,onSaved){
+ const categories={normal:'Casa comum',microscope:'Casa do Microscópio',flash:'Casa Relâmpago',doctor:'Casa do Médico',error:'Casa do Erro Histológico'};
+ const current=editIndex===null?null:customQuestionsFor(structureIndex,category)[editIndex];
+ const qText=current?.text||'';const answer=current?.answer||'';let questionImage=current?.image||'';
+ const imageField=category==='microscope'?`<section class="field" style="padding:12px;border:1px dashed var(--line);border-radius:12px;background:#fff"><b>Imagem da questão</b><span class="muted">Adicione uma única imagem por questão (JPG, PNG ou WEBP).</span><input id="customQuestionImage" type="file" accept="image/jpeg,image/png,image/webp"><img id="customQuestionImagePreview" alt="Prévia da imagem da questão" ${questionImage?`src="${questionImage}"`:'hidden'} style="display:block;max-width:100%;max-height:260px;object-fit:contain;border-radius:10px;margin-top:8px"><div class="row"><button type="button" class="secondary" id="removeCustomQuestionImage" ${questionImage?'':'disabled'}>Remover imagem</button></div></section>`:'';
+ const html=`<h2>${current?'✏️ Editar questão':'＋ Adicionar questão'}</h2>
+ <p><b>${escapeHTML(initialTeamBanks[structureIndex]?.name||'Estrutura')}</b> · ${categories[category]}</p>
+ <label class="field">Pergunta<textarea id="customQuestionText" rows="5" placeholder="Digite a pergunta...">${escapeHTML(qText)}</textarea></label>
+ ${imageField}
+ <label class="field">Gabarito / resposta esperada<textarea id="customQuestionAnswer" rows="5" placeholder="Digite o gabarito...">${escapeHTML(answer)}</textarea></label>
+ <div class="row"><button id="saveCustomQuestion">Salvar questão</button><button class="secondary" id="cancelCustomQuestion">Cancelar</button></div>
+ <p class="muted">As questões e imagens adicionadas são armazenadas neste navegador. O banco original permanece intacto. Exporte suas questões para manter uma cópia de segurança.</p>`;
+ openModal(html);
+ $('cancelCustomQuestion').onclick=()=>openQuestionBankOverview();
+ if(category==='microscope'){
+  $('customQuestionImage').onchange=async e=>{const file=e.target.files?.[0];if(!file)return;if(!file.type.startsWith('image/')){alert('Selecione um arquivo de imagem.');return;}try{questionImage=await compressQuestionImage(file);const preview=$('customQuestionImagePreview');preview.src=questionImage;preview.hidden=false;$('removeCustomQuestionImage').disabled=false;}catch(err){alert('Não foi possível carregar a imagem: '+err.message);}};
+  $('removeCustomQuestionImage').onclick=()=>{questionImage='';$('customQuestionImage').value='';$('customQuestionImagePreview').removeAttribute('src');$('customQuestionImagePreview').hidden=true;$('removeCustomQuestionImage').disabled=true;};
+ }
+ $('saveCustomQuestion').onclick=()=>{const text=$('customQuestionText').value.trim(),answer=$('customQuestionAnswer').value.trim();if(!text){alert('Digite o enunciado da pergunta.');return;}const arr=customQuestionsFor(structureIndex,category);const item={text,answer,...(category==='microscope'&&questionImage?{image:questionImage}:{})};if(editIndex===null)arr.push(item);else arr[editIndex]=item;try{saveCustomQuestionBank();}catch(err){alert('Não foi possível salvar. Exporte/remova imagens antigas ou use uma imagem menor.');return;}openQuestionBankOverview();$('bankTeam').value=String(structureIndex);$('bankCategory').value=category;const change=new Event('change');$('bankTeam').dispatchEvent(change);};
 }
 $('coverStart').onclick=()=>{beginDirectGame();};
 $('coverResume').onclick=()=>{$('splash').classList.add('hidden');$('setup').classList.add('hidden');if(teams.length){render();say('Partida retomada do ponto em que foi deixada.');}};
@@ -327,7 +374,8 @@ function askQuestion(i,house,shared,n,forcedType){
  const structureIndex=Number.isInteger(teams[i]?.structure)?teams[i].structure:i;const teamBank=initialTeamBanks[structureIndex]||initialTeamBanks[0];
  const preset=type==='doctor'?supplementalBanks.doctor:type==='error'?(supplementalBanks.errorByTeam[structureIndex]||[]):type==='normal'?teamBank.normal||[]:type==='flash'?teamBank.flash||[]:type==='microscope'?teamBank.microscope||[]:[];
  const custom=questions[key]||[];
- const arr=[...preset,...custom];
+ const editorAdded=customQuestionsFor(structureIndex,type);
+ const arr=[...preset,...editorAdded,...custom];
  used[key]=used[key]||[];
  let available=arr.map((q,j)=>({q,j})).filter(x=>!used[key].includes(x.j));
  if(!available.length&&arr.length){used[key]=[];available=arr.map((q,j)=>({q,j}));}
