@@ -51,15 +51,15 @@ h2{font-size:16px;margin:0 0 3px}.muted{color:#697671;font-size:12px}.row{displa
 <label class="field">Casa Relâmpago<input id="timeFlash" type="number" min="5" value="25"></label>
 <label class="field">Erro Histológico<input id="timeError" type="number" min="5" value="60"></label>
 </div></div>
-<p class="muted">Bancos integrados: perguntas por equipe para casas comuns e relâmpago; 40 casos da Casa do Médico; 110 afirmações com gabarito para a Casa do Erro Histológico. O tabuleiro original será mantido. A numeração automática segue a imagem enviada: fígado 9–13 com atalho para 20; estômago 9–19 e o trecho após o reencontro. As casas duplicadas recebem a mesma numeração lógica.</p>
-<div class="row"><button type="button" id="start">Iniciar partida</button><button class="secondary" id="loadSave">Carregar partida salva</button></div>
+<p class="muted">Bancos integrados: perguntas por equipe para casas comuns e relâmpago; 40 casos da Casa do Médico; 110 afirmações com gabarito para a Casa do Erro Histológico. O tabuleiro original será mantido. A numeração automática segue a imagem enviada: fígado 8–13 com atalho para 20; estômago 8–19 e o trecho após o reencontro. As casas duplicadas recebem a mesma numeração lógica.</p>
+<div class="row"><button type="button" id="start">Iniciar partida</button><button class="secondary" id="saveSetupBack">Salvar equipes e voltar à capa</button><button class="secondary" id="loadSave">Carregar partida salva</button></div>
 </div></div>
 <main>
 <div class="boardwrap" id="boardwrap"><img id="board" alt="Tabuleiro original"><svg id="overlay" viewBox="0 0 393 535" preserveAspectRatio="none"></svg></div>
 <aside class="panel">
 <div><div class="muted">VEZ ATUAL</div><div id="turn">Configure as equipes</div></div>
 <div id="dice">—</div><div class="row"><button id="roll" disabled>🎲 Sortear dado</button><button class="secondary" id="next" disabled>Próxima equipe</button></div>
-<div id="notice">Inicie a partida. As casas já estão numeradas automaticamente de acordo com a imagem enviada.</div><div id="calibrationTools" class="hidden"><b>Calibração por trechos</b><label class="muted">Selecione qual parte do caminho está marcando:</label><select id="calSegment"><option value="before">Trecho comum — antes da bifurcação</option><option value="routeA">Rota alternativa A</option><option value="routeB">Rota alternativa B</option><option value="after">Trecho comum — depois do reencontro</option></select><div class="muted" id="calCounts">Nenhuma casa marcada.</div><div class="row"><button class="secondary" id="clearSegment">Limpar trecho selecionado</button></div><p class="muted">As rotas têm comprimentos diferentes e já estão numeradas: fígado 9–13, com atalho para 20; estômago 9–19. Não é necessário igualar os caminhos.</p></div>
+<div id="notice">Inicie a partida. As casas já estão numeradas automaticamente de acordo com a imagem enviada.</div><div id="calibrationTools" class="hidden"><b>Calibração por trechos</b><label class="muted">Selecione qual parte do caminho está marcando:</label><select id="calSegment"><option value="before">Trecho comum — antes da bifurcação</option><option value="routeA">Rota alternativa A</option><option value="routeB">Rota alternativa B</option><option value="after">Trecho comum — depois do reencontro</option></select><div class="muted" id="calCounts">Nenhuma casa marcada.</div><div class="row"><button class="secondary" id="clearSegment">Limpar trecho selecionado</button></div><p class="muted">As rotas têm comprimentos diferentes e já estão numeradas: fígado 8–13, com atalho para 20; estômago 8–19. Não é necessário igualar os caminhos.</p></div>
 <div class="row"><button class="secondary" id="undo">Desfazer</button><button class="secondary" id="skip">Pular turno</button><button class="secondary" id="restart">Reiniciar</button></div>
 <div class="row"><button class="secondary" id="end">Encerrar</button><button class="secondary" id="calibrate">Ver numeração das casas</button></div>
 <div id="liveStatus" class="muted">Acompanhe a equipe da vez e use os comandos básicos.</div>
@@ -79,25 +79,26 @@ $('nTeams').onchange=setupNames;setupNames();
 function say(t){$('notice').textContent=t}
 
 // Coordenadas automáticas lidas da imagem numerada enviada pela usuária.
-// A numeração é preservada: 1–8 trecho inicial; fígado 9–13; estômago 9–19;
+// A numeração é preservada: 1–7 trecho inicial; fígado 8–13; estômago 8–19;
 // os dois caminhos convergem na casa 20 e seguem juntos até 76.
 const pt=(x,y)=>({x:x*393/1206,y:y*0.242+69});
-const commonStart=[ [625,276],[650,350],[660,410],[670,465],[675,520],[685,575],[700,635],[730,690] ].map(v=>pt(...v));
-const liverRoute=[ [525,700],[420,710],[315,720],[220,765],[145,835] ].map(v=>pt(...v));
-const stomachRoute=[ [785,700],[870,710],[950,730],[1010,790],[1020,860],[1000,920],[920,940],[830,920],[750,890],[650,870],[540,890] ].map(v=>pt(...v));
+const commonStart=[ [625,276],[650,350],[660,410],[670,465],[675,520],[685,575],[700,635] ].map(v=>pt(...v));
+const branchStart=[730,690];
+const liverRoute=[ branchStart,[525,700],[420,710],[315,720],[220,765],[145,835] ].map(v=>pt(...v));
+const stomachRoute=[ branchStart,[785,700],[870,710],[950,730],[1010,790],[1020,860],[1000,920],[920,940],[830,920],[750,890],[650,870],[540,890] ].map(v=>pt(...v));
 const commonEnd=[ [380,980],[500,990],[570,1020],[310,1160],[420,1160],[530,1165],[650,1165],[770,1160],[850,1130],[850,1200],[800,1280],[700,1280],[600,1280],[500,1280],[400,1280],[300,1280],[330,1370],[430,1380],[540,1390],[650,1390],[760,1380],[850,1370],[890,1440],[830,1500],[730,1510],[630,1510],[530,1500],[430,1500],[350,1500],[280,1490],[180,1450],[140,1370],[140,1280],[150,1190],[160,1100],[190,1030],[280,1020],[390,1030],[490,1040],[590,1050],[700,1050],[800,1040],[900,1030],[1000,1020],[1050,1090],[1050,1180],[1050,1270],[1050,1360],[1050,1450],[1040,1540],[930,1570],[830,1580],[730,1570],[630,1540],[520,1600],[520,1670],[520,1740] ].map(v=>pt(...v));
 function getTeamPath(team){
  const route=teamRoutes[team];
  const path=commonStart.map((p,i)=>({num:i+1,p}));
- if(route==='A') liverRoute.forEach((p,i)=>path.push({num:i+9,p}));
- else if(route==='B') stomachRoute.forEach((p,i)=>path.push({num:i+9,p}));
+ if(route==='A') liverRoute.forEach((p,i)=>path.push({num:i+8,p}));
+ else if(route==='B') stomachRoute.forEach((p,i)=>path.push({num:i+8,p}));
  else return path;
  commonEnd.forEach((p,i)=>path.push({num:i+20,p}));
  return path;
 }
 function getPoint(team,index){return getTeamPath(team)[index]?.p||null;}
 function getHouseNumber(team,index){return getTeamPath(team)[index]?.num||null;}
-function getHouseLabel(team,index){const route=teamRoutes[team],num=getHouseNumber(team,index);if(num===null)return '—';if(route==='A'&&num>=8&&num<=13)return `${num}A`;if(route==='B'&&num>=8&&num<=13)return `${num}B`;return String(num);}
+function getHouseLabel(team,index){const route=teamRoutes[team],num=getHouseNumber(team,index);if(num===null)return '—';if(route==='A'&&num>=8&&num<=13)return `${num}A`;if(route==='B'&&num>=8&&num<=19)return `${num}B`;return String(num);}
 function getPathLength(team){return getTeamPath(team).length;}
 function setAutomaticBoard(){
  houses=Array.from({length:76},(_,i)=>i+1);routeData={before:commonStart,routeA:liverRoute,routeB:stomachRoute,after:commonEnd};
@@ -194,27 +195,28 @@ function openQuestionBankOverview(){
 $('coverStart').onclick=()=>{beginDirectGame();};
 $('coverResume').onclick=()=>{$('splash').classList.add('hidden');$('setup').classList.add('hidden');if(teams.length){render();say('Partida retomada do ponto em que foi deixada.');}};
 $('coverHow').onclick=openHowToPlay;
-$('coverTeams').onclick=()=>{ $('splash').classList.add('hidden'); $('setup').classList.remove('hidden'); setupNames(); };
+$('coverTeams').onclick=()=>{ $('splash').classList.add('hidden'); $('setup').classList.remove('hidden'); if(!$('teamSetup').children.length)setupNames(); };
+$('saveSetupBack').onclick=()=>{ $('setup').classList.add('hidden'); $('splash').classList.remove('hidden'); say('Configuração das equipes mantida. Você pode voltar e iniciar a partida quando quiser.');};
 $('coverCalibrate').onclick=openBoardCalibration;
 $('coverBanks').onclick=openQuestionBankOverview;
 
 function pointForHouse(route, house){
  if(route==='commonStart')return commonStart[house-1];
- if(route==='liver')return liverRoute[house-9];
- if(route==='stomach')return stomachRoute[house-9];
+ if(route==='liver')return liverRoute[house-8];
+ if(route==='stomach')return stomachRoute[house-8];
  if(route==='commonEnd')return commonEnd[house-20];
  return null;
 }
 function setPointForHouse(route,house,p){
  if(route==='commonStart')commonStart[house-1]=p;
- else if(route==='liver')liverRoute[house-9]=p;
- else if(route==='stomach')stomachRoute[house-9]=p;
+ else if(route==='liver')liverRoute[house-8]=p;
+ else if(route==='stomach')stomachRoute[house-8]=p;
  else if(route==='commonEnd')commonEnd[house-20]=p;
  drawTokens();
 }
 function openBoardCalibration(){
  setAutomaticBoard();
- const routeOptions=`<option value="commonStart">Trecho comum inicial (casas 1–8)</option><option value="liver">Rota A — fígado (casas 9–13)</option><option value="stomach">Rota B — estômago (casas 9–19)</option><option value="commonEnd">Trecho comum final (casas 20–76)</option>`;
+ const routeOptions=`<option value="commonStart">Trecho comum inicial (casas 1–7)</option><option value="liver">Rota A — fígado (casas 8A–13A)</option><option value="stomach">Rota B — estômago (casas 8B–19B)</option><option value="commonEnd">Trecho comum final (casas 20–76)</option>`;
  openModal(`<h2>📍 Cadastrar localização das casas</h2>
  <p>Selecione o trecho e a casa. Depois, <b>clique diretamente no centro da casa no tabuleiro abaixo</b>. O marcador mostra onde o pino ficará durante a partida. Repita para todas as casas e clique em Concluir.</p>
  <div class="setupgrid">
@@ -236,12 +238,12 @@ function openBoardCalibration(){
  const route=$('editRoute'), house=$('editHouse');
  $('calBoardImage').src=boardData;
  function pointArray(r){return r==='commonStart'?commonStart:r==='liver'?liverRoute:r==='stomach'?stomachRoute:commonEnd;}
- function houseRange(r){return r==='commonStart'?[1,8]:r==='liver'?[9,13]:r==='stomach'?[9,19]:[20,76];}
+ function houseRange(r){return r==='commonStart'?[1,7]:r==='liver'?[8,13]:r==='stomach'?[8,19]:[20,76];}
  function drawCalibrationPreview(){
   const svg=$('calBoardOverlay');if(!svg)return;svg.innerHTML='';
   const groups=[['commonStart',commonStart,'#777'],['liver',liverRoute,'#b66b35'],['stomach',stomachRoute,'#477c9b'],['commonEnd',commonEnd,'#777']];
   groups.forEach(([r,arr,color])=>arr.forEach((p,i)=>{
-   const n=r==='commonStart'?i+1:r==='commonEnd'?i+20:i+9;
+   const n=r==='commonStart'?i+1:r==='commonEnd'?i+20:i+8;
    const c=document.createElementNS('http://www.w3.org/2000/svg','circle');
    c.setAttribute('cx',p.x);c.setAttribute('cy',p.y);c.setAttribute('r',r===route.value&&n===+house.value?8:4.2);
    c.setAttribute('fill',r===route.value&&n===+house.value?'#e53935':color);c.setAttribute('stroke','#fff');c.setAttribute('stroke-width','1.5');c.setAttribute('opacity',r===route.value&&n===+house.value?'1':'.78');svg.append(c);
@@ -249,7 +251,7 @@ function openBoardCalibration(){
   }));
  }
  function syncPoint(){const p=pointForHouse(route.value,+house.value);if(p){$('editX').value=Number(p.x.toFixed(1));$('editY').value=Number(p.y.toFixed(1));}drawCalibrationPreview();}
- function fillHouses(){const [min,max]=houseRange(route.value);house.innerHTML=Array.from({length:max-min+1},(_,i)=>{const n=min+i;const suffix=route.value==='liver'?'A':route.value==='stomach'&&n<=13?'B':'';return `<option value="${n}">Casa ${n}${suffix}</option>`}).join('');syncPoint();}
+ function fillHouses(){const [min,max]=houseRange(route.value);house.innerHTML=Array.from({length:max-min+1},(_,i)=>{const n=min+i;const suffix=route.value==='liver'?'A':route.value==='stomach'?'B':'';return `<option value="${n}">Casa ${n}${suffix}</option>`}).join('');syncPoint();}
  route.onchange=fillHouses;house.onchange=syncPoint;fillHouses();
  $('calBoardStage').onclick=e=>{
   const rect=$('calBoardStage').getBoundingClientRect();
