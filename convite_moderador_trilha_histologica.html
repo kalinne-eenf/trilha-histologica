@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Trilha Histológica — Convite de moderador</title>
+<style>
+body{font-family:Arial,sans-serif;background:#f5f3ef;color:#292722;margin:0;padding:28px}
+main{max-width:620px;margin:0 auto;background:white;padding:26px;border-radius:16px;box-shadow:0 4px 24px #0001}
+h1{font-size:23px;margin-top:0}p{line-height:1.5;color:#555}
+label{display:block;font-weight:600;margin:16px 0 6px}
+input{box-sizing:border-box;width:100%;padding:12px;border:1px solid #ccc;border-radius:8px;font-size:15px}
+button{margin-top:20px;background:#167a59;color:white;border:0;border-radius:8px;padding:13px 18px;font-size:15px;cursor:pointer}
+button:disabled{opacity:.55;cursor:wait}
+.note{font-size:13px;background:#f4f7f5;padding:12px;border-radius:8px}
+#status,#result{margin-top:18px;white-space:pre-wrap;overflow-wrap:anywhere}
+#result{background:#f4f7f5;padding:14px;border-radius:8px;display:none}
+.token{font-family:monospace;font-size:14px;user-select:all}
+</style>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+</head>
+<body><main>
+<h1>Trilha Histológica — Convite de moderador</h1>
+<p>Ferramenta temporária para a administradora gerar um convite. Use somente a <b>Publishable key</b>. Nunca coloque aqui a service role/secret key.</p>
+<div class="note">A senha é enviada diretamente ao Supabase Auth para autenticação. Esta página não salva a senha. Use-a apenas no seu computador.</div>
+<label for="url">Project URL</label><input id="url" placeholder="https://SEU-PROJETO.supabase.co">
+<label for="key">Publishable key</label><input id="key" placeholder="sb_publishable_..." autocomplete="off">
+<label for="adminEmail">Seu e-mail de administradora</label><input id="adminEmail" type="email" autocomplete="username">
+<label for="adminPassword">Sua senha de administradora</label><input id="adminPassword" type="password" autocomplete="current-password">
+<label for="inviteEmail">E-mail da pessoa convidada</label><input id="inviteEmail" type="email" placeholder="moderador@exemplo.com">
+<button id="submit">Entrar e gerar convite</button><div id="status" role="status"></div>
+<div id="result"><b>Convite criado</b><p>Compartilhe o código abaixo. Ele só poderá ser usado uma vez e expira em sete dias.</p>
+<div class="token" id="token"></div><button id="copy" type="button">Copiar código do convite</button><p id="expiry"></p>
+<p class="note">Guarde o código agora. O banco armazena somente o hash e não será possível recuperar o token depois.</p></div>
+</main>
+<script>
+const $ = (id) => document.getElementById(id);
+let inviteToken = "";
+$("submit").addEventListener("click", async () => {
+ const button=$("submit"); $("status").textContent=""; $("result").style.display="none";
+ const url=$("url").value.trim().replace(/\/+$/,""), key=$("key").value.trim();
+ const adminEmail=$("adminEmail").value.trim(), password=$("adminPassword").value, inviteEmail=$("inviteEmail").value.trim();
+ if(!url||!key||!adminEmail||!password||!inviteEmail){$("status").textContent="Preencha todos os campos.";return;}
+ if(!window.supabase){$("status").textContent="A biblioteca do Supabase não carregou. Verifique sua conexão e recarregue a página.";return;}
+ button.disabled=true; button.textContent="Processando…";
+ try {
+  const client=window.supabase.createClient(url,key,{auth:{persistSession:false,autoRefreshToken:false}});
+  const {data:login,error:loginError}=await client.auth.signInWithPassword({email:adminEmail,password});
+  if(loginError||!login.session) throw new Error("Não foi possível entrar. Confira o e-mail e a senha da administradora.");
+  const {data,error}=await client.functions.invoke("create-moderator-invite",{body:{email:inviteEmail}});
+  if(error){let detail=error.message||"Erro ao chamar a função.";try{const ctx=error.context;if(ctx&&typeof ctx.json==="function"){const body=await ctx.json();if(body?.error)detail=body.error;}}catch{}throw new Error(detail);}
+  if(!data?.success||!data?.invitation?.token) throw new Error(data?.error||"A função não retornou um convite válido.");
+  inviteToken=data.invitation.token; $("token").textContent=inviteToken;
+  $("expiry").textContent="Validade até: "+new Date(data.invitation.expires_at).toLocaleString("pt-BR");
+  $("result").style.display="block"; $("status").textContent="Convite gerado com sucesso.";
+  $("adminPassword").value=""; await client.auth.signOut();
+ } catch(err){$("status").textContent="Não foi possível gerar o convite: "+(err?.message||String(err));}
+ finally{button.disabled=false;button.textContent="Entrar e gerar convite";}
+});
+$("copy").addEventListener("click",async()=>{if(!inviteToken)return;await navigator.clipboard.writeText(inviteToken);$("copy").textContent="Código copiado!";});
+</script></body></html>
