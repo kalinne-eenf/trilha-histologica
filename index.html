@@ -108,6 +108,24 @@ const DELETED_ORIGINAL_KEY='trilhaHistologica_deletedOriginalQuestions_v1';
 let deletedOriginalQuestions={};
 try{deletedOriginalQuestions=JSON.parse(localStorage.getItem(DELETED_ORIGINAL_KEY)||'{}')||{};}catch(e){deletedOriginalQuestions={};}
 function saveDeletedOriginalQuestions(){localStorage.setItem(DELETED_ORIGINAL_KEY,JSON.stringify(deletedOriginalQuestions));}
+// Edições das questões originais são guardadas como sobrescritas locais: o banco-fonte permanece intacto.
+const EDITED_ORIGINAL_KEY='trilhaHistologica_editedOriginalQuestions_v1';
+let editedOriginalQuestions={};
+try{editedOriginalQuestions=JSON.parse(localStorage.getItem(EDITED_ORIGINAL_KEY)||'{}')||{};}catch(e){editedOriginalQuestions={};}
+function originalQuestionScope(structureIndex,category){return category==='doctor'?'shared':String(structureIndex);}
+function getOriginalQuestion(structureIndex,category,index,source){
+ const key=`${originalQuestionScope(structureIndex,category)}:${category}:${index}`;
+ const override=editedOriginalQuestions[key];
+ if(!override)return source;
+ const base=typeof source==='string'?{text:source}:{...(source||{})};
+ return {...base,...override};
+}
+function saveOriginalQuestionEdit(structureIndex,category,index,text,answer,image){
+ const key=`${originalQuestionScope(structureIndex,category)}:${category}:${index}`;
+ const old=editedOriginalQuestions[key]||{};
+ editedOriginalQuestions[key]={...old,text,answer,...(category==='microscope'?(image?{image}:{image:null}):{})};
+ localStorage.setItem(EDITED_ORIGINAL_KEY,JSON.stringify(editedOriginalQuestions));
+}
 function originalQuestionId(structureIndex,category,index){return `${structureIndex}:${category}:${index}`;}
 function canDeleteQuestions(){return !!adminUser&&(adminProfile?.role==='admin'||adminPermissions?.can_delete_questions===true);}
 function canAddQuestions(){return !!adminUser&&(adminProfile?.role==='admin'||adminPermissions?.can_add_questions===true);}
@@ -262,7 +280,7 @@ function openQuestionBankOverview(){
   const mayDelete=canDeleteQuestions();
   $('bankPermissionNotice').textContent=mayDelete?'Você está autenticada com permissão para excluir questões. As questões originais podem ser ocultadas e restauradas; as adicionais podem ser excluídas.':'Entre como administradora (ou com permissão de exclusão) para excluir ou restaurar questões. A consulta do banco continua disponível.';
   list.innerHTML=cats.map(k=>{
-   const original=data[k]||[],added=customQuestionsFor(ti,k);
+   const sourceOriginal=data[k]||[],original=sourceOriginal.map((q,i)=>getOriginalQuestion(ti,k,i,q)),added=customQuestionsFor(ti,k);
    const visibleOriginal=original.map((q,i)=>({q,i})).filter(x=>!deletedOriginalQuestions[originalQuestionId(ti,k,x.i)]);
    const removedOriginal=original.map((q,i)=>({q,i})).filter(x=>!!deletedOriginalQuestions[originalQuestionId(ti,k,x.i)]);
    const renderItem=(q,displayIndex,isCustom,sourceIndex)=>{
@@ -270,7 +288,7 @@ function openQuestionBankOverview(){
     const ans=typeof q==='object'?(q.answer||'Gabarito não cadastrado'):'Gabarito não cadastrado';
     const actions=isCustom
       ? `${canEditQuestions()?`<button class="secondary" data-edit-custom="${k}:${sourceIndex}">Editar questão</button>`:''}${mayDelete?`<button class="warn" data-delete-custom="${k}:${sourceIndex}">Excluir questão</button>`:''}`
-      : (mayDelete?`<button class="warn" data-delete-original="${k}:${sourceIndex}">Ocultar questão original</button>`:'');
+      : `${canEditQuestions()?`<button class="secondary" data-edit-original="${k}:${sourceIndex}">Editar questão original</button>`:''}${mayDelete?`<button class="warn" data-delete-original="${k}:${sourceIndex}">Ocultar questão original</button>`:''}`;
     return `<details style="padding:10px;border-bottom:1px solid var(--line)"><summary><b>${displayIndex}. ${escapeHTML(txt).slice(0,180)}</b> ${isCustom?'<span class="muted">(adicionada)</span>':'<span class="muted">(original)</span>'}</summary><p style="white-space:pre-wrap">${escapeHTML(txt)}</p><p><b>Gabarito:</b> <span style="white-space:pre-wrap">${escapeHTML(ans)}</span></p>${k==='microscope'&&q&&typeof q==='object'&&q.image?`<img src="${q.image}" alt="Imagem da questão" style="display:block;max-width:220px;max-height:140px;object-fit:contain;border-radius:8px;margin:8px 0">`:''}${actions}</details>`;
    };
    const active=visibleOriginal.map((x,j)=>renderItem(x.q,j+1,false,x.i)).join('')+added.map((q,j)=>renderItem(q,visibleOriginal.length+j+1,true,j)).join('');
@@ -278,6 +296,11 @@ function openQuestionBankOverview(){
    return `<section style="margin-bottom:18px"><h3>${names[k]} — ${escapeHTML(b.name)}</h3><p class="muted">${visibleOriginal.length} original(is) visível(is) · ${added.length} adicionada(s) · ${removedOriginal.length} original(is) ocultada(s)</p>${active||'<p class="muted">Não há perguntas visíveis nesta modalidade.</p>'}${restore}</section>`;
   }).join('');
   list.querySelectorAll('[data-edit-custom]').forEach(btn=>btn.onclick=()=>{if(!canEditQuestions()){alert('Você não possui permissão para editar questões.');return;}const [k,j]=btn.dataset.editCustom.split(':');openQuestionEditor(ti,k,+j,()=>{openQuestionBankOverview();$('bankTeam').value=String(ti);$('bankCategory').value=k;});});
+  list.querySelectorAll('[data-edit-original]').forEach(btn=>btn.onclick=()=>{
+   if(!canEditQuestions()){alert('Você não possui permissão para editar questões.');return;}
+   const [k,idx]=btn.dataset.editOriginal.split(':');
+   openQuestionEditor(ti,k,+idx,renderBank,{original:true});
+  });
   list.querySelectorAll('[data-delete-original]').forEach(btn=>btn.onclick=()=>{if(!canDeleteQuestions()){alert('Você não possui permissão para excluir questões.');return;}const [k,idx]=btn.dataset.deleteOriginal.split(':');if(confirm('Ocultar esta questão original? Ela poderá ser restaurada depois.')){deletedOriginalQuestions[originalQuestionId(ti,k,+idx)]={deletedAt:new Date().toISOString()};saveDeletedOriginalQuestions();recordAdminActivity('original_question_hidden',{structure:initialTeamBanks[ti]?.name,category:k,index:+idx});renderBank();}});
   list.querySelectorAll('[data-restore-original]').forEach(btn=>btn.onclick=()=>{if(!canDeleteQuestions())return;const [k,idx]=btn.dataset.restoreOriginal.split(':');delete deletedOriginalQuestions[originalQuestionId(ti,k,+idx)];saveDeletedOriginalQuestions();recordAdminActivity('original_question_restored',{structure:initialTeamBanks[ti]?.name,category:k,index:+idx});renderBank();});
   list.querySelectorAll('[data-delete-custom]').forEach(btn=>btn.onclick=()=>{if(!canDeleteQuestions()){alert('Você não possui permissão para excluir questões.');return;}const [k,j]=btn.dataset.deleteCustom.split(':');if(confirm('Excluir permanentemente esta questão adicional?')){customQuestionsFor(ti,k).splice(+j,1);saveCustomQuestionBank();recordAdminActivity('custom_question_deleted',{structure:initialTeamBanks[ti]?.name,category:k,index:+j});renderBank();}});
@@ -294,11 +317,16 @@ async function compressQuestionImage(file){
  const maxSide=1500,scale=Math.min(1,maxSide/Math.max(img.naturalWidth,img.naturalHeight));const canvas=document.createElement('canvas');canvas.width=Math.max(1,Math.round(img.naturalWidth*scale));canvas.height=Math.max(1,Math.round(img.naturalHeight*scale));canvas.getContext('2d').drawImage(img,0,0,canvas.width,canvas.height);
  return canvas.toDataURL('image/jpeg',0.84);
 }
-function openQuestionEditor(structureIndex,category,editIndex,onSaved){
+function openQuestionEditor(structureIndex,category,editIndex,onSaved,originalMeta=null){
  if(!adminUser){alert('Entre na área administrativa para adicionar ou editar questões.');openAdminLogin();return;}if(editIndex===null&&!canAddQuestions()){alert('Você não possui permissão para adicionar questões.');return;}if(editIndex!==null&&!canEditQuestions()){alert('Você não possui permissão para editar questões.');return;}
  const categories={normal:'Casa comum',microscope:'Casa do Microscópio',flash:'Casa Relâmpago',doctor:'Casa do Médico',error:'Casa do Erro Histológico'};
- const current=editIndex===null?null:customQuestionsFor(structureIndex,category)[editIndex];
- const qText=current?.text||'';const answer=current?.answer||'';let questionImage=current?.image||'';
+ const originalSource=originalMeta?.original?(
+  category==='doctor'?(supplementalBanks.doctor||[])[editIndex]:
+  category==='error'?(supplementalBanks.errorByTeam[structureIndex]||[])[editIndex]:
+  (initialTeamBanks[structureIndex]?.[category]||[])[editIndex]
+ ):null;
+ const current=originalMeta?.original?getOriginalQuestion(structureIndex,category,editIndex,originalSource):(editIndex===null?null:customQuestionsFor(structureIndex,category)[editIndex]);
+ const qText=typeof current==='string'?current:(current?.text||'');const answer=typeof current==='object'?(current?.answer||''):'';let questionImage=current?.image||'';
  const imageField=category==='microscope'?`<section class="field" style="padding:12px;border:1px dashed var(--line);border-radius:12px;background:#fff"><b>Imagem da questão</b><span class="muted">Adicione uma única imagem por questão (JPG, PNG ou WEBP).</span><input id="customQuestionImage" type="file" accept="image/jpeg,image/png,image/webp"><img id="customQuestionImagePreview" alt="Prévia da imagem da questão" ${questionImage?`src="${questionImage}"`:'hidden'} style="display:block;max-width:100%;max-height:260px;object-fit:contain;border-radius:10px;margin-top:8px"><div class="row"><button type="button" class="secondary" id="removeCustomQuestionImage" ${questionImage?'':'disabled'}>Remover imagem</button></div></section>`:'';
  const html=`<h2>${current?'✏️ Editar questão':'＋ Adicionar questão'}</h2>
  <p><b>${escapeHTML(initialTeamBanks[structureIndex]?.name||'Estrutura')}</b> · ${categories[category]}</p>
@@ -306,14 +334,29 @@ function openQuestionEditor(structureIndex,category,editIndex,onSaved){
  ${imageField}
  <label class="field">Gabarito / resposta esperada<textarea id="customQuestionAnswer" rows="5" placeholder="Digite o gabarito...">${escapeHTML(answer)}</textarea></label>
  <div class="row"><button id="saveCustomQuestion">Salvar questão</button><button class="secondary" id="cancelCustomQuestion">Cancelar</button></div>
- <p class="muted">As questões e imagens adicionadas são armazenadas neste navegador. O banco original permanece intacto. Exporte suas questões para manter uma cópia de segurança.</p>`;
+ <p class="muted">${originalMeta?.original?'A edição da questão original será salva neste navegador como uma versão personalizada, sem apagar o texto-fonte.':'As questões e imagens adicionadas são armazenadas neste navegador. Exporte suas questões para manter uma cópia de segurança.'}</p>`;
  openModal(html);
  $('cancelCustomQuestion').onclick=()=>openQuestionBankOverview();
  if(category==='microscope'){
   $('customQuestionImage').onchange=async e=>{const file=e.target.files?.[0];if(!file)return;if(!file.type.startsWith('image/')){alert('Selecione um arquivo de imagem.');return;}try{questionImage=await compressQuestionImage(file);const preview=$('customQuestionImagePreview');preview.src=questionImage;preview.hidden=false;$('removeCustomQuestionImage').disabled=false;}catch(err){alert('Não foi possível carregar a imagem: '+err.message);}};
   $('removeCustomQuestionImage').onclick=()=>{questionImage='';$('customQuestionImage').value='';$('customQuestionImagePreview').removeAttribute('src');$('customQuestionImagePreview').hidden=true;$('removeCustomQuestionImage').disabled=true;};
  }
- $('saveCustomQuestion').onclick=()=>{const text=$('customQuestionText').value.trim(),answer=$('customQuestionAnswer').value.trim();if(!text){alert('Digite o enunciado da pergunta.');return;}const arr=customQuestionsFor(structureIndex,category);const item={text,answer,...(category==='microscope'&&questionImage?{image:questionImage}:{})};if(editIndex===null)arr.push(item);else arr[editIndex]=item;try{saveCustomQuestionBank();}catch(err){alert('Não foi possível salvar. Exporte/remova imagens antigas ou use uma imagem menor.');return;}recordAdminActivity(editIndex===null?'custom_question_added':'custom_question_edited',{structure:initialTeamBanks[structureIndex]?.name,category});openQuestionBankOverview();$('bankTeam').value=String(structureIndex);$('bankCategory').value=category;const change=new Event('change');$('bankTeam').dispatchEvent(change);};
+ $('saveCustomQuestion').onclick=()=>{
+  const text=$('customQuestionText').value.trim(),answer=$('customQuestionAnswer').value.trim();
+  if(!text){alert('Digite o enunciado da pergunta.');return;}
+  if(originalMeta?.original){
+   try{saveOriginalQuestionEdit(structureIndex,category,editIndex,text,answer,questionImage);}
+   catch(err){alert('Não foi possível salvar a edição neste navegador.');return;}
+   recordAdminActivity('original_question_edited',{structure:initialTeamBanks[structureIndex]?.name,category,index:editIndex});
+   openQuestionBankOverview();$('bankTeam').value=String(structureIndex);$('bankCategory').value=category;$('bankTeam').dispatchEvent(new Event('change'));return;
+  }
+  const arr=customQuestionsFor(structureIndex,category);
+  const item={text,answer,...(category==='microscope'&&questionImage?{image:questionImage}:{})};
+  if(editIndex===null)arr.push(item);else arr[editIndex]=item;
+  try{saveCustomQuestionBank();}catch(err){alert('Não foi possível salvar. Exporte/remova imagens antigas ou use uma imagem menor.');return;}
+  recordAdminActivity(editIndex===null?'custom_question_added':'custom_question_edited',{structure:initialTeamBanks[structureIndex]?.name,category});
+  openQuestionBankOverview();$('bankTeam').value=String(structureIndex);$('bankCategory').value=category;$('bankTeam').dispatchEvent(new Event('change'));
+ };
 }
 $('coverStart').onclick=()=>{beginDirectGame();};
 $('coverResume').onclick=()=>{$('splash').classList.add('hidden');$('setup').classList.add('hidden');if(teams.length){render();say('Partida retomada do ponto em que foi deixada.');}};
@@ -425,7 +468,7 @@ function startTimer(){if(timerRemaining<=0)return;stopTimer();$('timerStatus').t
 function askQuestion(i,house,shared,n,forcedType){
  const type=forcedType||getHouseType(i,house),key=shared?'doctor':`${i}:${getHouseTypeKey(i,house)}:${type}`;
  const structureIndex=Number.isInteger(teams[i]?.structure)?teams[i].structure:i;const teamBank=initialTeamBanks[structureIndex]||initialTeamBanks[0];
- const preset=type==='doctor'?supplementalBanks.doctor:type==='error'?(supplementalBanks.errorByTeam[structureIndex]||[]):type==='normal'?teamBank.normal||[]:type==='flash'?teamBank.flash||[]:type==='microscope'?teamBank.microscope||[]:[];
+ const presetSource=type==='doctor'?supplementalBanks.doctor:type==='error'?(supplementalBanks.errorByTeam[structureIndex]||[]):type==='normal'?teamBank.normal||[]:type==='flash'?teamBank.flash||[]:type==='microscope'?teamBank.microscope||[]:[];const preset=presetSource.map((q,idx)=>getOriginalQuestion(structureIndex,type,idx,q));
  const custom=questions[key]||[];
  const editorAdded=customQuestionsFor(structureIndex,type);
  const arr=[...preset,...editorAdded,...custom];
