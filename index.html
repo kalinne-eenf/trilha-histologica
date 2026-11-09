@@ -120,6 +120,8 @@ let editedOriginalQuestions={};
 try{editedOriginalQuestions=JSON.parse(localStorage.getItem(EDITED_ORIGINAL_KEY)||'{}')||{};}catch(e){editedOriginalQuestions={};}
 function originalQuestionScope(structureIndex,category){return category==='doctor'?'shared':String(structureIndex);}
 function getOriginalQuestion(structureIndex,category,index,source){
+ // Casas básicas são fixas e seguem exclusivamente o documento BMF1.
+ if(category==='normal')return source;
  const key=`${originalQuestionScope(structureIndex,category)}:${category}:${index}`;
  const override=editedOriginalQuestions[key];
  if(!override)return source;
@@ -137,6 +139,8 @@ function canDeleteQuestions(){return !!adminUser&&(adminProfile?.role==='admin'|
 function canAddQuestions(){return !!adminUser&&(adminProfile?.role==='admin'||adminPermissions?.can_add_questions===true);}
 function canEditQuestions(){return !!adminUser&&(adminProfile?.role==='admin'||adminPermissions?.can_edit_questions===true);}
 function customQuestionsFor(structureIndex,category){
+ // Não existe divisão entre questões originais/adicionadas nas casas básicas.
+ if(category==='normal')return [];
  const key=String(structureIndex);
  if(!customQuestionBank[key])customQuestionBank[key]={};
  if(!Array.isArray(customQuestionBank[key][category]))customQuestionBank[key][category]=[];
@@ -277,7 +281,7 @@ function openQuestionBankOverview(){
   <label class="field">Estrutura<select id="bankTeam">${initialTeamBanks.map((b,i)=>[4,5].includes(i)?'':`<option value="${i}">${escapeHTML(b.name)}</option>`).join('')}</select></label>
   <label class="field">Tipo de casa<select id="bankCategory"><option value="normal">Casa comum</option><option value="microscope">Casa do Microscópio</option><option value="flash">Casa Relâmpago</option><option value="doctor">Casa do Médico</option><option value="all">Todas as casas desta estrutura</option></select></label>
  </div>
- <div class="row"><button id="manageBank">＋ Gerenciar / adicionar questões</button><button class="secondary" id="exportCustomBank">Exportar minhas questões</button><label class="secondary" style="padding:10px 14px;border-radius:12px;cursor:pointer;font-weight:650">Importar questões<input id="importCustomBank" type="file" accept="application/json,.json" style="display:none"></label></div>
+ <div class="row"><button id="manageBank">＋ Gerenciar questões especiais</button><button class="secondary" id="exportCustomBank">Exportar minhas questões</button><label class="secondary" style="padding:10px 14px;border-radius:12px;cursor:pointer;font-weight:650">Importar questões<input id="importCustomBank" type="file" accept="application/json,.json" style="display:none"></label></div>
  <p id="bankPermissionNotice" class="muted"></p>
  <div id="bankQuestionList" style="max-height:58vh;overflow:auto;margin:12px 0;padding:4px"></div>
  <div class="row"><button id="closeBanks">Voltar</button></div>`;
@@ -291,7 +295,16 @@ function openQuestionBankOverview(){
   const mayDelete=canDeleteQuestions();
   $('bankPermissionNotice').textContent=mayDelete?'Você está autenticada com permissão para excluir questões. As questões originais podem ser ocultadas e restauradas; as adicionais podem ser excluídas.':'Entre como administradora (ou com permissão de exclusão) para excluir ou restaurar questões. A consulta do banco continua disponível.';
   list.innerHTML=cats.map(k=>{
-   const sourceOriginal=data[k]||[],original=sourceOriginal.map((q,i)=>getOriginalQuestion(ti,k,i,q)),added=customQuestionsFor(ti,k);
+   const sourceOriginal=data[k]||[];
+   if(k==='normal'){
+    const items=sourceOriginal.map((q,j)=>{
+     const txt=typeof q==='string'?q:(q.text||'Pergunta');
+     const ans=typeof q==='object'?(q.answer||''):'';
+     return `<details style="padding:10px;border-bottom:1px solid var(--line)"><summary><b>${j+1}. ${escapeHTML(txt).slice(0,180)}</b></summary><p style="white-space:pre-wrap">${escapeHTML(txt)}</p>${ans?`<p><b>Gabarito:</b> <span style="white-space:pre-wrap">${escapeHTML(ans)}</span></p>`:''}</details>`;
+    }).join('');
+    return `<section style="margin-bottom:18px"><h3>${names[k]} — ${escapeHTML(b.name)}</h3><p class="muted">${sourceOriginal.length} questões fixas do documento BMF1</p>${items||'<p class="muted">Não há questões nesta estrutura.</p>'}</section>`;
+   }
+   const original=sourceOriginal.map((q,i)=>getOriginalQuestion(ti,k,i,q)),added=customQuestionsFor(ti,k);
    const visibleOriginal=original.map((q,i)=>({q,i})).filter(x=>!deletedOriginalQuestions[originalQuestionId(ti,k,x.i)]);
    const removedOriginal=original.map((q,i)=>({q,i})).filter(x=>!!deletedOriginalQuestions[originalQuestionId(ti,k,x.i)]);
    const renderItem=(q,displayIndex,isCustom,sourceIndex)=>{
@@ -299,12 +312,12 @@ function openQuestionBankOverview(){
     const ans=typeof q==='object'?(q.answer||'Gabarito não cadastrado'):'Gabarito não cadastrado';
     const actions=isCustom
       ? `${canEditQuestions()?`<button class="secondary" data-edit-custom="${k}:${sourceIndex}">Editar questão</button>`:''}${mayDelete?`<button class="warn" data-delete-custom="${k}:${sourceIndex}">Excluir questão</button>`:''}`
-      : `${canEditQuestions()?`<button class="secondary" data-edit-original="${k}:${sourceIndex}">Editar questão original</button>`:''}${mayDelete?`<button class="warn" data-delete-original="${k}:${sourceIndex}">Ocultar questão original</button>`:''}`;
-    return `<details style="padding:10px;border-bottom:1px solid var(--line)"><summary><b>${displayIndex}. ${escapeHTML(txt).slice(0,180)}</b> ${isCustom?'<span class="muted">(adicionada)</span>':'<span class="muted">(original)</span>'}</summary><p style="white-space:pre-wrap">${escapeHTML(txt)}</p><p><b>Gabarito:</b> <span style="white-space:pre-wrap">${escapeHTML(ans)}</span></p>${k==='microscope'&&q&&typeof q==='object'&&q.image?`<img src="${q.image}" alt="Imagem da questão" style="display:block;max-width:220px;max-height:140px;object-fit:contain;border-radius:8px;margin:8px 0">`:''}${actions}</details>`;
+      : `${canEditQuestions()?`<button class="secondary" data-edit-original="${k}:${sourceIndex}">Editar questão</button>`:''}${mayDelete?`<button class="warn" data-delete-original="${k}:${sourceIndex}">Ocultar questão</button>`:''}`;
+    return `<details style="padding:10px;border-bottom:1px solid var(--line)"><summary><b>${displayIndex}. ${escapeHTML(txt).slice(0,180)}</b></summary><p style="white-space:pre-wrap">${escapeHTML(txt)}</p><p><b>Gabarito:</b> <span style="white-space:pre-wrap">${escapeHTML(ans)}</span></p>${k==='microscope'&&q&&typeof q==='object'&&q.image?`<img src="${q.image}" alt="Imagem da questão" style="display:block;max-width:220px;max-height:140px;object-fit:contain;border-radius:8px;margin:8px 0">`:''}${actions}</details>`;
    };
    const active=visibleOriginal.map((x,j)=>renderItem(x.q,j+1,false,x.i)).join('')+added.map((q,j)=>renderItem(q,visibleOriginal.length+j+1,true,j)).join('');
-   const restore=removedOriginal.length&&mayDelete?`<div style="margin-top:10px;padding:10px;background:#f7f1e8;border-radius:10px"><b>Questões originais ocultadas (${removedOriginal.length})</b>${removedOriginal.map(x=>`<div class="row" style="justify-content:space-between;padding:5px 0"><span>${escapeHTML((typeof x.q==='string'?x.q:x.q?.text)||'Questão').slice(0,110)}</span><button class="secondary" data-restore-original="${k}:${x.i}">Restaurar</button></div>`).join('')}</div>`:'';
-   return `<section style="margin-bottom:18px"><h3>${names[k]} — ${escapeHTML(b.name)}</h3><p class="muted">${visibleOriginal.length} original(is) visível(is) · ${added.length} adicionada(s) · ${removedOriginal.length} original(is) ocultada(s)</p>${active||'<p class="muted">Não há perguntas visíveis nesta modalidade.</p>'}${restore}</section>`;
+   const restore=removedOriginal.length&&mayDelete?`<div style="margin-top:10px;padding:10px;background:#f7f1e8;border-radius:10px"><b>Questões ocultadas (${removedOriginal.length})</b>${removedOriginal.map(x=>`<div class="row" style="justify-content:space-between;padding:5px 0"><span>${escapeHTML((typeof x.q==='string'?x.q:x.q?.text)||'Questão').slice(0,110)}</span><button class="secondary" data-restore-original="${k}:${x.i}">Restaurar</button></div>`).join('')}</div>`:'';
+   return `<section style="margin-bottom:18px"><h3>${names[k]} — ${escapeHTML(b.name)}</h3><p class="muted">${visibleOriginal.length} questão(ões) visível(is) · ${added.length} adicionada(s) · ${removedOriginal.length} ocultada(s)</p>${active||'<p class="muted">Não há perguntas visíveis nesta modalidade.</p>'}${restore}</section>`;
   }).join('');
   list.querySelectorAll('[data-edit-custom]').forEach(btn=>btn.onclick=()=>{if(!canEditQuestions()){alert('Você não possui permissão para editar questões.');return;}const [k,j]=btn.dataset.editCustom.split(':');openQuestionEditor(ti,k,+j,()=>{openQuestionBankOverview();$('bankTeam').value=String(ti);$('bankCategory').value=k;});});
   list.querySelectorAll('[data-edit-original]').forEach(btn=>btn.onclick=()=>{
@@ -329,6 +342,11 @@ async function compressQuestionImage(file){
  return canvas.toDataURL('image/jpeg',0.84);
 }
 function openQuestionEditor(structureIndex,category,editIndex,onSaved,originalMeta=null){
+ if(category==='normal'){
+  alert('As casas básicas usam exclusivamente as perguntas fixas do documento BMF1. Não é possível adicionar ou editar questões nessa categoria.');
+  return;
+ }
+
  if(!adminUser){alert('Entre na área administrativa para adicionar ou editar questões.');openAdminLogin();return;}if(editIndex===null&&!canAddQuestions()){alert('Você não possui permissão para adicionar questões.');return;}if(editIndex!==null&&!canEditQuestions()){alert('Você não possui permissão para editar questões.');return;}
  const categories={normal:'Casa comum',microscope:'Casa do Microscópio',flash:'Casa Relâmpago',doctor:'Casa do Médico'};
  const originalSource=originalMeta?.original?(
@@ -345,7 +363,7 @@ function openQuestionEditor(structureIndex,category,editIndex,onSaved,originalMe
  ${imageField}
  <label class="field">Gabarito / resposta esperada<textarea id="customQuestionAnswer" rows="5" placeholder="Digite o gabarito...">${escapeHTML(answer)}</textarea></label>
  <div class="row"><button id="saveCustomQuestion">Salvar questão</button><button class="secondary" id="cancelCustomQuestion">Cancelar</button></div>
- <p class="muted">${originalMeta?.original?'A edição da questão original será salva neste navegador como uma versão personalizada, sem apagar o texto-fonte.':'As questões e imagens adicionadas são armazenadas neste navegador. Exporte suas questões para manter uma cópia de segurança.'}</p>`;
+ <p class="muted">${originalMeta?.original?'A edição de questões especiais será salva neste navegador.':'As questões das casas especiais são armazenadas neste navegador. Exporte suas questões para manter uma cópia de segurança.'}</p>`;
  openModal(html);
  $('cancelCustomQuestion').onclick=()=>openQuestionBankOverview();
  if(category==='microscope'){
