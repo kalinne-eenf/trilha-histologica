@@ -416,7 +416,7 @@ function openQuestionBankOverview(){
  function renderBank(){
   const ti=+$('bankTeam').value,cat=$('bankCategory').value,b=initialTeamBanks[ti]||{};
   const names={normal:'Casa comum',microscope:'Casa do Microscópio',flash:'Casa Relâmpago',doctor:'Casa do Médico'};
-  const data={normal:b.normal||[],microscope:b.microscope||[],flash:(b.flash||[]).filter(q=>{const t=typeof q==='string'?q:String(q?.text||'');const a=String(q?.answer||'').trim().toLowerCase();return /^(verdadeiro|falso)\b/.test(a)||/^verdadeiro\s+ou\s+falso\s*\?/i.test(t)||/^\s*(v|f)\s*[-:.)]/i.test(t);}),doctor:supplementalBanks.doctor[String(ti)]||[]};
+  const data={normal:b.normal||[],microscope:b.microscope||[],flash:(b.flash||[]).filter(q=>{const t=typeof q==='string'?q:String(q?.text||'');const a=String(q?.answer||'').trim();return /^\s*(?:gabarito\s*:\s*)?(?:verdadeiro|falso)\b/i.test(a)||/^verdadeiro\s+ou\s+falso\s*\?/i.test(t)||/^\s*(?:v|f)\s*[-:.)]/i.test(t);}),doctor:supplementalBanks.doctor[String(ti)]||[]};
   const cats=cat==='all'?['normal','microscope','flash','doctor']:[cat];
   const mayDelete=canDeleteQuestions();
   $('bankPermissionNotice').textContent=mayDelete?'Você pode editar e excluir definitivamente qualquer questão deste banco.':'Entre como administradora (ou moderador com permissão) para editar ou excluir questões.';
