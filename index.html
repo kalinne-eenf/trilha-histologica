@@ -121,7 +121,7 @@ try{editedOriginalQuestions=JSON.parse(localStorage.getItem(EDITED_ORIGINAL_KEY)
 function originalQuestionScope(structureIndex,category){if(category==='flash'&&[3,4,5].includes(structureIndex))return 'small-intestine';return String(structureIndex);}
 function getOriginalQuestion(structureIndex,category,index,source){
  // Casas básicas são fixas e seguem exclusivamente o documento BMF1.
- if(category==='normal')return source;
+ if(category==='normal'||category==='flash')return source;
  const key=`${originalQuestionScope(structureIndex,category)}:${category}:${index}`;
  const override=editedOriginalQuestions[key];
  if(!override)return source;
@@ -402,7 +402,7 @@ function openQuestionBankOverview(){
  if(!adminProfile||!['admin','moderator'].includes(adminProfile.role)){alert('Somente administradora e moderadores podem acessar o banco.');return;}
  if(adminProfile.role==='moderator'&&adminPermissions?.can_view_bank!==true){alert('Sua conta não possui permissão para acessar o banco de perguntas.');return;}
  const html=`<h2>🗂️ Banco de perguntas</h2>
- <p>Banco de questões das estruturas. A Casa Relâmpago usa as 210 afirmações do PDF do Sistema Digestório; as questões da Casa do Médico foram preservadas.</p>
+ <p>Banco de questões das estruturas. A Casa Relâmpago usa exclusivamente as 210 afirmações do PDF anexado, com os respectivos gabaritos e justificativas. Esse banco é fixo e não permite inclusão, edição ou exclusão.</p>
  <div class="setupgrid">
   <label class="field">Estrutura<select id="bankTeam">${initialTeamBanks.map((b,i)=>[4,5].includes(i)?'':`<option value="${i}">${escapeHTML(b.name)}</option>`).join('')}</select></label>
   <label class="field">Tipo de casa<select id="bankCategory"><option value="normal">Casa comum</option><option value="microscope">Casa do Microscópio</option><option value="flash">Casa Relâmpago</option><option value="doctor">Casa do Médico</option><option value="all">Todas as casas desta estrutura</option></select></label>
@@ -416,20 +416,20 @@ function openQuestionBankOverview(){
  function renderBank(){
   const ti=+$('bankTeam').value,cat=$('bankCategory').value,b=initialTeamBanks[ti]||{};
   const names={normal:'Casa comum',microscope:'Casa do Microscópio',flash:'Casa Relâmpago',doctor:'Casa do Médico'};
-  const data={normal:b.normal||[],microscope:b.microscope||[],flash:(b.flash||[]).filter(q=>{const t=typeof q==='string'?q:String(q?.text||'');const a=String(q?.answer||'').trim();return /^\s*(?:gabarito\s*:\s*)?(?:verdadeiro|falso)\b/i.test(a)||/^verdadeiro\s+ou\s+falso\s*\?/i.test(t)||/^\s*(?:v|f)\s*[-:.)]/i.test(t);}),doctor:supplementalBanks.doctor[String(ti)]||[]};
+  const data={normal:b.normal||[],microscope:b.microscope||[],flash:b.flash||[],doctor:supplementalBanks.doctor[String(ti)]||[]};
   const cats=cat==='all'?['normal','microscope','flash','doctor']:[cat];
   const mayDelete=canDeleteQuestions();
   $('bankPermissionNotice').textContent=mayDelete?'Você pode editar e excluir definitivamente qualquer questão deste banco.':'Entre como administradora (ou moderador com permissão) para editar ou excluir questões.';
   list.innerHTML=cats.map(k=>{
    const originals=(data[k]||[]).map((q,i)=>({q:getOriginalQuestion(ti,k,i,q),i,kind:'base'}));
-   const customSource=customQuestionsFor(ti,k);
+   const customSource=k==='flash'?[]:customQuestionsFor(ti,k);
    const customs=customSource.map((q,i)=>({q,i,kind:'custom'})).filter(x=>k!=='flash'||(()=>{const t=typeof x.q==='string'?x.q:String(x.q?.text||'');const a=String(x.q?.answer||'').trim();return /^\s*(?:gabarito\s*:\s*)?(?:verdadeiro|falso)\b/i.test(a)||/^verdadeiro\s+ou\s+falso\s*\?/i.test(t)||/^\s*(?:v|f)\s*[-:.)]/i.test(t);})());
    const items=[...originals,...customs].filter(x=>k==='flash'||!deletedOriginalQuestions[originalQuestionId(ti,k,x.i)+(x.kind==='custom'?':custom':'')]);
    const renderItem=(item,n)=>{
     const q=item.q,txt=typeof q==='string'?q:(q?.text||'Pergunta');
     const ans=typeof q==='object'?(q.answer||'Gabarito não cadastrado'):'Gabarito não cadastrado';
     const ref=item.kind==='base'?`base:${item.i}`:`custom:${item.i}`;
-    const actions=`${canEditQuestions()?`<button class="secondary" data-unified-edit="${k}:${ref}">Editar questão</button>`:''}${mayDelete?`<button class="warn" data-unified-delete="${k}:${ref}">Excluir definitivamente</button>`:''}`;
+    const actions=k==='flash'?'<p class="muted">Questão fixa do PDF anexado — conteúdo e gabarito não editáveis.</p>':`${canEditQuestions()?`<button class="secondary" data-unified-edit="${k}:${ref}">Editar questão</button>`:''}${mayDelete?`<button class="warn" data-unified-delete="${k}:${ref}">Excluir definitivamente</button>`:''}`;
     return `<details style="padding:10px;border-bottom:1px solid var(--line)"><summary style="white-space:pre-wrap;overflow-wrap:anywhere"><b>${n}. ${escapeHTML(txt)}</b></summary><p style="white-space:pre-wrap">${escapeHTML(txt)}</p><p><b>Gabarito:</b> <span style="white-space:pre-wrap">${escapeHTML(ans)}</span></p>${k==='microscope'&&q&&typeof q==='object'&&q.image?`<img src="${q.image}" alt="Imagem da questão" style="display:block;max-width:220px;max-height:140px;object-fit:contain;border-radius:8px;margin:8px 0">`:''}${actions}</details>`;
    };
    const rendered=items.map(renderItem).join('');
@@ -452,9 +452,9 @@ function openQuestionBankOverview(){
   });
  }
  $('bankTeam').onchange=renderBank;$('bankCategory').onchange=renderBank;$('closeBanks').onclick=closeModal;
- $('manageBank').disabled=!!adminUser&&!(canAddQuestions()||canEditQuestions());$('manageBank').onclick=()=>{if(!adminUser){alert('Entre na área administrativa para gerenciar questões.');openAdminLogin();return;}if(!canAddQuestions()&&!canEditQuestions()){alert('Sua conta não possui permissão para adicionar ou editar questões.');return;}openQuestionEditor(+$('bankTeam').value,$('bankCategory').value==='all'?'normal':$('bankCategory').value,null,renderBank);};
+ $('manageBank').disabled=!!adminUser&&!(canAddQuestions()||canEditQuestions());$('manageBank').onclick=()=>{if($('bankCategory').value==='flash'){alert('A Casa Relâmpago é fixa e reproduz exclusivamente o PDF anexado; não é possível adicionar ou alterar questões.');return;}if(!adminUser){alert('Entre na área administrativa para gerenciar questões.');openAdminLogin();return;}if(!canAddQuestions()&&!canEditQuestions()){alert('Sua conta não possui permissão para adicionar ou editar questões.');return;}openQuestionEditor(+$('bankTeam').value,$('bankCategory').value==='all'?'normal':$('bankCategory').value,null,renderBank);};
  $('exportCustomBank').onclick=()=>{const blob=new Blob([JSON.stringify(customQuestionBank,null,2)],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='minhas-questoes-trilha-histologica.json';a.click();URL.revokeObjectURL(a.href);};
- $('importCustomBank').onchange=async e=>{if(!adminUser){alert('Entre na área administrativa para importar questões.');openAdminLogin();return;}if(!canAddQuestions()){alert('Sua conta não possui permissão para importar/adicionar questões.');return;}const file=e.target.files?.[0];if(!file)return;try{const data=JSON.parse(await file.text());if(!data||typeof data!=='object'||Array.isArray(data))throw new Error('Formato inválido');for(const [key,cats] of Object.entries(data)){if(!/^\d+$/.test(key)||!cats||typeof cats!=='object')continue;for(const cat of ['normal','microscope','flash','doctor'])if(Array.isArray(cats[cat]))customQuestionsFor(+key,cat).push(...cats[cat].filter(q=>q&&typeof q.text==='string'));}saveCustomQuestionBank();renderBank();alert('Questões importadas!');}catch(err){alert('Não foi possível importar: '+err.message);}};
+ $('importCustomBank').onchange=async e=>{if(!adminUser){alert('Entre na área administrativa para importar questões.');openAdminLogin();return;}if(!canAddQuestions()){alert('Sua conta não possui permissão para importar/adicionar questões.');return;}const file=e.target.files?.[0];if(!file)return;try{const data=JSON.parse(await file.text());if(!data||typeof data!=='object'||Array.isArray(data))throw new Error('Formato inválido');for(const [key,cats] of Object.entries(data)){if(!/^\d+$/.test(key)||!cats||typeof cats!=='object')continue;for(const cat of ['normal','microscope','doctor'])if(Array.isArray(cats[cat]))customQuestionsFor(+key,cat).push(...cats[cat].filter(q=>q&&typeof q.text==='string'));}saveCustomQuestionBank();renderBank();alert('Questões importadas!');}catch(err){alert('Não foi possível importar: '+err.message);}};
  renderBank();
 }
 async function compressQuestionImage(file){
@@ -627,7 +627,8 @@ function askQuestion(i,house,shared,n,forcedType){
  // Casas comuns: exclusivamente as perguntas do documento BMF1 (banco fixo).
  // Perguntas locais antigas/adicionais não entram no sorteio das casas comuns.
  const allQuestions=[...preset,...editorAdded,...custom];
- const arr=type==='flash'?allQuestions.filter(q=>{const text=typeof q==='string'?q:String(q?.text||'');const answer=String(q?.answer||'').trim();return /^\s*(?:gabarito\s*:\s*)?(?:verdadeiro|falso)\b/i.test(answer)||/^verdadeiro\s+ou\s+falso\s*\?/i.test(text)||/^\s*(?:v|f)\s*[-:.)]/i.test(text);}):allQuestions;
+ // Casa Relâmpago: sorteio somente do banco fixo extraído do PDF anexado.
+ const arr=type==='flash'?preset:allQuestions;
  used[key]=used[key]||[];
  let available=arr.map((q,j)=>({q,j})).filter(x=>!used[key].includes(x.j));
  if(!available.length&&arr.length){used[key]=[];available=arr.map((q,j)=>({q,j}));}
@@ -640,7 +641,7 @@ function askQuestion(i,house,shared,n,forcedType){
  timerRemaining=timerLength(type);
  openModal(`<h2>${title}</h2><div class="question-layout">
  <section class="question-card"><div class="muted">PERGUNTA — ${teams[i].name} · Casa ${getHouseLabel(i,positions[i])}</div>
- <textarea id="questionText" rows="10" style="min-height:280px;resize:vertical;white-space:pre-wrap;overflow-wrap:anywhere" placeholder="Digite ou cole a pergunta aqui...">${initial.replace(/</g,'&lt;').replace(/>/g,'&gt;')}</textarea>
+ <textarea id="questionText" ${type==='flash'?'readonly':''} rows="10" style="min-height:280px;resize:vertical;white-space:pre-wrap;overflow-wrap:anywhere" placeholder="Digite ou cole a pergunta aqui...">${initial.replace(/</g,'&lt;').replace(/>/g,'&gt;')}</textarea>
  ${type==='microscope'?`<div class="microscope-image-area"><label class="muted">Imagem da lâmina / microscopia</label><input id="questionImage" type="file" accept="image/*"><img id="questionPreview" ${currentQuestionImage?'src="'+currentQuestionImage+'"':'hidden'} alt="Imagem da questão microscópica"></div>`:''}
  <p class="muted">A pergunta permanece em tela cheia durante o cronômetro e até você julgar a resposta.</p>
  <div><button type="button" class="secondary" id="showAnswer">Mostrar gabarito ao mediador</button><div id="answerBox" class="hidden" style="margin-top:8px;padding:10px;background:#eef5ef;border-radius:10px"><b>Resposta esperada:</b><p id="answerText"></p></div></div></section>
@@ -657,7 +658,7 @@ function askQuestion(i,house,shared,n,forcedType){
  $('timerReset').onclick=()=>{stopTimer();timerRemaining=timerLength(type);paintTimer();$('timerStatus').textContent='Cronômetro zerado'};
  function finishQuestion(correct){
   stopTimer();const qtext=$('questionText').value.trim();
-  if(qtext){questions[key]=questions[key]||[];if(!arr.some(q=>(typeof q==='string'?q:q.text)===qtext))questions[key].push({text:qtext,image:currentQuestionImage});}
+  if(qtext&&type!=='flash'){questions[key]=questions[key]||[];if(!arr.some(q=>(typeof q==='string'?q:q.text)===qtext))questions[key].push({text:qtext,image:currentQuestionImage});}
   closeModal();
   teamStats[i]=teamStats[i]||{answered:0,correct:0,wrong:0};teamStats[i].answered++;
   if(correct){teamStats[i].correct++;log(`${teams[i].name}: acertou na casa ${house}. Permaneceu na casa.`);say('Resposta correta! A equipe permanece na casa.');}
