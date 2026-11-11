@@ -114,14 +114,16 @@ const DELETED_ORIGINAL_KEY='trilhaHistologica_deletedOriginalQuestions_v1';
 let deletedOriginalQuestions={};
 try{deletedOriginalQuestions=JSON.parse(localStorage.getItem(DELETED_ORIGINAL_KEY)||'{}')||{};}catch(e){deletedOriginalQuestions={};}
 function saveDeletedOriginalQuestions(){localStorage.setItem(DELETED_ORIGINAL_KEY,JSON.stringify(deletedOriginalQuestions));queueSharedSave('questions');}
+const HIDDEN_QUESTIONS_KEY='trilhaHistologica_hiddenQuestions_v1';
+let hiddenQuestions={};
+try{hiddenQuestions=JSON.parse(localStorage.getItem(HIDDEN_QUESTIONS_KEY)||'{}')||{};}catch(e){hiddenQuestions={};}
+function saveHiddenQuestions(){localStorage.setItem(HIDDEN_QUESTIONS_KEY,JSON.stringify(hiddenQuestions));queueSharedSave('questions');}
 // Edições das questões originais são guardadas como sobrescritas compartilhadas: o banco-fonte permanece intacto.
 const EDITED_ORIGINAL_KEY='trilhaHistologica_editedOriginalQuestions_v1';
 let editedOriginalQuestions={};
 try{editedOriginalQuestions=JSON.parse(localStorage.getItem(EDITED_ORIGINAL_KEY)||'{}')||{};}catch(e){editedOriginalQuestions={};}
-function originalQuestionScope(structureIndex,category){if(category==='flash'&&[3,4,5].includes(structureIndex))return 'small-intestine';return String(structureIndex);}
+function originalQuestionScope(structureIndex,category){if(['normal','flash'].includes(category)&&[3,4,5].includes(structureIndex))return 'small-intestine';return String(structureIndex);}
 function getOriginalQuestion(structureIndex,category,index,source){
- // Casas básicas são fixas e seguem exclusivamente o documento BMF1.
- if(category==='normal'||category==='flash')return source;
  const key=`${originalQuestionScope(structureIndex,category)}:${category}:${index}`;
  const override=editedOriginalQuestions[key];
  if(!override)return source;
@@ -142,7 +144,7 @@ let sharedStateReady=false,sharedStateRevision={questions:0,board:0},sharedSaveT
 function safeLocalJSON(key,fallback={}){try{return JSON.parse(localStorage.getItem(key)||'null')??fallback;}catch(e){return fallback;}}
 function captureBoardCoordinates(){return {commonStart:commonStart.map(p=>({...p})),liverRoute:liverRoute.map(p=>({...p})),stomachRoute:stomachRoute.map(p=>({...p})),commonEnd:commonEnd.map(p=>({...p}))};}
 function sharedPayloadFor(section){
- if(section==='questions')return {customQuestionBank,deletedOriginalQuestions,editedOriginalQuestions};
+ if(section==='questions')return {customQuestionBank,deletedOriginalQuestions,editedOriginalQuestions,hiddenQuestions};
  return {houseTypes,coordinates:captureBoardCoordinates(),settings:{
   timeNormal:$('timeNormal')?.value||'60',timeDoctor:$('timeDoctor')?.value||'120',
   timeMicro:$('timeMicro')?.value||'120',timeFlash:$('timeFlash')?.value||'25'
@@ -156,6 +158,8 @@ function applySharedSection(section,payload){
    customQuestionBank=payload.customQuestionBank&&typeof payload.customQuestionBank==='object'?payload.customQuestionBank:{};
    deletedOriginalQuestions=payload.deletedOriginalQuestions&&typeof payload.deletedOriginalQuestions==='object'?payload.deletedOriginalQuestions:{};
    editedOriginalQuestions=payload.editedOriginalQuestions&&typeof payload.editedOriginalQuestions==='object'?payload.editedOriginalQuestions:{};
+   hiddenQuestions=payload.hiddenQuestions&&typeof payload.hiddenQuestions==='object'?payload.hiddenQuestions:{};
+   localStorage.setItem(HIDDEN_QUESTIONS_KEY,JSON.stringify(hiddenQuestions));
    localStorage.setItem(CUSTOM_BANK_STORAGE_KEY,JSON.stringify(customQuestionBank));
    localStorage.setItem(DELETED_ORIGINAL_KEY,JSON.stringify(deletedOriginalQuestions));
    localStorage.setItem(EDITED_ORIGINAL_KEY,JSON.stringify(editedOriginalQuestions));
@@ -263,9 +267,9 @@ async function initializeSharedGameState(){
  }catch(e){sharedStateReady=true;console.error('Não foi possível carregar o banco compartilhado:',e);say('Sincronização ainda não configurada. Aplique o arquivo SQL que acompanha esta versão no Supabase.');}
 }
 function originalQuestionId(structureIndex,category,index){return `${originalQuestionScope(structureIndex,category)}:${category}:${index}`;}
-function canDeleteQuestions(){return !!adminUser&&(adminProfile?.role==='admin'||adminPermissions?.can_delete_questions===true);}
+function canDeleteQuestions(){return !!adminUser&&(adminProfile?.role==='admin'||adminProfile?.role==='moderator'||adminPermissions?.can_delete_questions===true);}
 function canAddQuestions(){return !!adminUser&&(adminProfile?.role==='admin'||adminPermissions?.can_add_questions===true);}
-function canEditQuestions(){return !!adminUser&&(adminProfile?.role==='admin'||adminPermissions?.can_edit_questions===true);}
+function canEditQuestions(){return !!adminUser&&(adminProfile?.role==='admin'||adminProfile?.role==='moderator'||adminPermissions?.can_edit_questions===true);}
 function customQuestionsFor(structureIndex,category){
  const key=String(structureIndex);
  if(!customQuestionBank[key])customQuestionBank[key]={};
@@ -400,9 +404,9 @@ function openHowToPlay(){openModal(`<h2>📖 Como jogar — resumo</h2>
 function openQuestionBankOverview(){
  if(!adminUser){alert('O banco de perguntas é restrito. Entre como administradora ou moderador autorizado.');openAdminLogin();return;}
  if(!adminProfile||!['admin','moderator'].includes(adminProfile.role)){alert('Somente administradora e moderadores podem acessar o banco.');return;}
- if(adminProfile.role==='moderator'&&adminPermissions?.can_view_bank!==true){alert('Sua conta não possui permissão para acessar o banco de perguntas.');return;}
+
  const html=`<h2>🗂️ Banco de perguntas</h2>
- <p>Banco de questões das estruturas. A Casa Relâmpago usa exclusivamente as 210 afirmações do PDF anexado, com os respectivos gabaritos e justificativas. Esse banco é fixo e não permite inclusão, edição ou exclusão.</p>
+ <p>Banco de questões das estruturas. Os enunciados e gabaritos originais são preservados como fonte; administradores e moderadores podem editar, ocultar ou excluir qualquer questão dos blocos comuns, Médico e Relâmpago.</p>
  <div class="setupgrid">
   <label class="field">Estrutura<select id="bankTeam">${initialTeamBanks.map((b,i)=>[4,5].includes(i)?'':`<option value="${i}">${escapeHTML(b.name)}</option>`).join('')}</select></label>
   <label class="field">Tipo de casa<select id="bankCategory"><option value="normal">Casa comum</option><option value="microscope">Casa do Microscópio</option><option value="flash">Casa Relâmpago</option><option value="doctor">Casa do Médico</option><option value="all">Todas as casas desta estrutura</option></select></label>
@@ -419,40 +423,56 @@ function openQuestionBankOverview(){
   const data={normal:b.normal||[],microscope:b.microscope||[],flash:b.flash||[],doctor:supplementalBanks.doctor[String(ti)]||[]};
   const cats=cat==='all'?['normal','microscope','flash','doctor']:[cat];
   const mayDelete=canDeleteQuestions();
-  $('bankPermissionNotice').textContent=mayDelete?'Você pode editar e excluir definitivamente qualquer questão deste banco.':'Entre como administradora (ou moderador com permissão) para editar ou excluir questões.';
+  $('bankPermissionNotice').textContent=mayDelete?'Administradores e moderadores podem ocultar qualquer questão, inclusive as importadas do PDF.':'Entre como administradora ou moderador para gerenciar questões.';
   list.innerHTML=cats.map(k=>{
    const originals=(data[k]||[]).map((q,i)=>({q:getOriginalQuestion(ti,k,i,q),i,kind:'base'}));
-   const customSource=k==='flash'?[]:customQuestionsFor(ti,k);
+   const customSource=['normal','flash'].includes(k)?[]:customQuestionsFor(ti,k);
    const customs=customSource.map((q,i)=>({q,i,kind:'custom'})).filter(x=>k!=='flash'||(()=>{const t=typeof x.q==='string'?x.q:String(x.q?.text||'');const a=String(x.q?.answer||'').trim();return /^\s*(?:gabarito\s*:\s*)?(?:verdadeiro|falso)\b/i.test(a)||/^verdadeiro\s+ou\s+falso\s*\?/i.test(t)||/^\s*(?:v|f)\s*[-:.)]/i.test(t);})());
-   const items=[...originals,...customs].filter(x=>k==='flash'||!deletedOriginalQuestions[originalQuestionId(ti,k,x.i)+(x.kind==='custom'?':custom':'')]);
+   const items=[...originals,...customs].filter(x=>!deletedOriginalQuestions[originalQuestionId(ti,k,x.i)+(x.kind==='custom'?':custom':'')]);
    const renderItem=(item,n)=>{
     const q=item.q,txt=typeof q==='string'?q:(q?.text||'Pergunta');
-    const ans=typeof q==='object'?(q.answer||'Gabarito não cadastrado'):'Gabarito não cadastrado';
+    const rawAns=typeof q==='object'?(q.answer||'Gabarito não cadastrado'):'Gabarito não cadastrado';
+    const ans=String(rawAns).replace(/^\s*gabarito\s*:\s*/i,'');
     const ref=item.kind==='base'?`base:${item.i}`:`custom:${item.i}`;
-    const actions=k==='flash'?'<p class="muted">Questão fixa do PDF anexado — conteúdo e gabarito não editáveis.</p>':`${canEditQuestions()?`<button class="secondary" data-unified-edit="${k}:${ref}">Editar questão</button>`:''}${mayDelete?`<button class="warn" data-unified-delete="${k}:${ref}">Excluir definitivamente</button>`:''}`;
-    return `<details style="padding:10px;border-bottom:1px solid var(--line)"><summary style="white-space:pre-wrap;overflow-wrap:anywhere"><b>${n}. ${escapeHTML(txt)}</b></summary><p style="white-space:pre-wrap">${escapeHTML(txt)}</p><p><b>Gabarito:</b> <span style="white-space:pre-wrap">${escapeHTML(ans)}</span></p>${k==='microscope'&&q&&typeof q==='object'&&q.image?`<img src="${q.image}" alt="Imagem da questão" style="display:block;max-width:220px;max-height:140px;object-fit:contain;border-radius:8px;margin:8px 0">`:''}${actions}</details>`;
+    const qid=originalQuestionId(ti,k,item.i)+(item.kind==='custom'?':custom':'');const isHidden=!!hiddenQuestions[qid];const actions=`${canEditQuestions()?`<button class="secondary" data-unified-edit="${k}:${ref}">Editar questão</button>`:''}${mayDelete?(isHidden?`<button class="secondary" data-unified-restore="${k}:${ref}">Reexibir questão</button>`:`<button class="secondary" data-unified-hide="${k}:${ref}">Ocultar questão</button>`)+`<button class="warn" data-unified-delete="${k}:${ref}">Excluir definitivamente</button>`:''}`;
+    return `<details style="padding:10px;border-bottom:1px solid var(--line);${isHidden?'opacity:.72':''}"><summary style="white-space:pre-wrap;overflow-wrap:anywhere"><b>${n}. ${escapeHTML(txt)}</b> ${isHidden?'<span class="muted">(OCULTA)</span>':''}</summary><p style="white-space:pre-wrap">${escapeHTML(txt)}</p><p><b>Gabarito:</b> <span style="white-space:pre-wrap">${escapeHTML(ans)}</span></p>${k==='microscope'&&q&&typeof q==='object'&&q.image?`<img src="${q.image}" alt="Imagem da questão" style="display:block;max-width:220px;max-height:140px;object-fit:contain;border-radius:8px;margin:8px 0">`:''}${actions}</details>`;
    };
    const rendered=items.map(renderItem).join('');
    return `<section style="margin-bottom:18px"><h3>${names[k]} — ${escapeHTML(b.name||'Banco compartilhado')}</h3><p class="muted">${items.length} questão(ões)</p>${rendered||'<p class="muted">Não há perguntas nesta modalidade.</p>'}</section>`;
   }).join('');
   list.querySelectorAll('[data-unified-edit]').forEach(btn=>btn.onclick=()=>{
    if(!canEditQuestions()){alert('Você não possui permissão para editar questões.');return;}
-   const [k,ref]=btn.dataset.unifiedEdit.split(':');const [kind,index]=ref.split(':');
-   if(kind==='base')openQuestionEditor(ti,k,+index,renderBank,{original:true});
-   else openQuestionEditor(ti,k,+index,renderBank);
+   const [k,kind,indexText]=btn.dataset.unifiedEdit.split(':');const index=Number(indexText);
+   if(kind==='base')openQuestionEditor(ti,k,index,renderBank,{original:true});
+   else openQuestionEditor(ti,k,index,renderBank);
+  });
+  list.querySelectorAll('[data-unified-hide]').forEach(btn=>btn.onclick=()=>{
+   if(!canDeleteQuestions()){alert('Você não possui permissão para ocultar questões.');return;}
+   const [k,kind,indexText]=btn.dataset.unifiedHide.split(':');const index=Number(indexText);
+   const qid=originalQuestionId(ti,k,index)+(kind==='custom'?':custom':'');
+   hiddenQuestions[qid]={hiddenAt:new Date().toISOString(),hiddenBy:adminUser?.id||null};
+   saveHiddenQuestions();recordAdminActivity('question_hidden',{structure:initialTeamBanks[ti]?.name,category:k,index,source:kind});renderBank();
+  });
+  list.querySelectorAll('[data-unified-restore]').forEach(btn=>btn.onclick=()=>{
+   if(!canDeleteQuestions()){alert('Você não possui permissão para reexibir questões.');return;}
+   const [k,kind,indexText]=btn.dataset.unifiedRestore.split(':');const index=Number(indexText);
+   const qid=originalQuestionId(ti,k,index)+(kind==='custom'?':custom':'');
+   delete hiddenQuestions[qid];saveHiddenQuestions();recordAdminActivity('question_restored',{structure:initialTeamBanks[ti]?.name,category:k,index,source:kind});renderBank();
   });
   list.querySelectorAll('[data-unified-delete]').forEach(btn=>btn.onclick=()=>{
    if(!canDeleteQuestions()){alert('Você não possui permissão para excluir questões.');return;}
-   const [k,ref]=btn.dataset.unifiedDelete.split(':');const [kind,indexText]=ref.split(':');const index=+indexText;
-   if(!confirm('Excluir definitivamente esta questão? Esta ação não poderá ser desfeita pelo banco.'))return;
+   const [k,kind,indexText]=btn.dataset.unifiedDelete.split(':');const index=Number(indexText);
+   if(!confirm(k==='flash'?'Ocultar esta questão do PDF? Ela deixará de aparecer no sorteio para todas as equipes que compartilham esta seção.':'Excluir definitivamente esta questão?'))return;
+   const qid=originalQuestionId(ti,k,index)+(kind==='custom'?':custom':'');
    if(kind==='custom'){customQuestionsFor(ti,k).splice(index,1);saveCustomQuestionBank();}
-   else {deletedOriginalQuestions[originalQuestionId(ti,k,index)]={deletedAt:new Date().toISOString(),permanent:true};saveDeletedOriginalQuestions();}
+   else {deletedOriginalQuestions[originalQuestionId(ti,k,index)]={deletedAt:new Date().toISOString(),permanent:true};saveDeletedOriginalQuestions();delete editedOriginalQuestions[`${originalQuestionScope(ti,k)}:${k}:${index}`];localStorage.setItem(EDITED_ORIGINAL_KEY,JSON.stringify(editedOriginalQuestions));queueSharedSave('questions');}
+   delete hiddenQuestions[qid];saveHiddenQuestions();
    recordAdminActivity('question_deleted',{structure:initialTeamBanks[ti]?.name,category:k,index,source:kind});
    renderBank();
   });
  }
  $('bankTeam').onchange=renderBank;$('bankCategory').onchange=renderBank;$('closeBanks').onclick=closeModal;
- $('manageBank').disabled=!!adminUser&&!(canAddQuestions()||canEditQuestions());$('manageBank').onclick=()=>{if($('bankCategory').value==='flash'){alert('A Casa Relâmpago é fixa e reproduz exclusivamente o PDF anexado; não é possível adicionar ou alterar questões.');return;}if(!adminUser){alert('Entre na área administrativa para gerenciar questões.');openAdminLogin();return;}if(!canAddQuestions()&&!canEditQuestions()){alert('Sua conta não possui permissão para adicionar ou editar questões.');return;}openQuestionEditor(+$('bankTeam').value,$('bankCategory').value==='all'?'normal':$('bankCategory').value,null,renderBank);};
+ $('manageBank').disabled=!!adminUser&&!(canAddQuestions()||canEditQuestions()||canDeleteQuestions());$('manageBank').onclick=()=>{if(!adminUser){alert('Entre na área administrativa para gerenciar questões.');openAdminLogin();return;}if(!canAddQuestions()&&!canEditQuestions()&&!canDeleteQuestions()){alert('Sua conta não possui permissão para gerenciar questões.');return;}const selected=$('bankCategory').value==='all'?'normal':$('bankCategory').value;if(['normal','flash'].includes(selected)){alert('Este bloco utiliza exclusivamente seu banco-fonte. Você pode editar, ocultar ou excluir as questões existentes, mas não adicionar perguntas externas.');return;}openQuestionEditor(+$('bankTeam').value,selected,null,renderBank);};
  $('exportCustomBank').onclick=()=>{const blob=new Blob([JSON.stringify(customQuestionBank,null,2)],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='minhas-questoes-trilha-histologica.json';a.click();URL.revokeObjectURL(a.href);};
  $('importCustomBank').onchange=async e=>{if(!adminUser){alert('Entre na área administrativa para importar questões.');openAdminLogin();return;}if(!canAddQuestions()){alert('Sua conta não possui permissão para importar/adicionar questões.');return;}const file=e.target.files?.[0];if(!file)return;try{const data=JSON.parse(await file.text());if(!data||typeof data!=='object'||Array.isArray(data))throw new Error('Formato inválido');for(const [key,cats] of Object.entries(data)){if(!/^\d+$/.test(key)||!cats||typeof cats!=='object')continue;for(const cat of ['normal','microscope','doctor'])if(Array.isArray(cats[cat]))customQuestionsFor(+key,cat).push(...cats[cat].filter(q=>q&&typeof q.text==='string'));}saveCustomQuestionBank();renderBank();alert('Questões importadas!');}catch(err){alert('Não foi possível importar: '+err.message);}};
  renderBank();
@@ -464,15 +484,10 @@ async function compressQuestionImage(file){
  return canvas.toDataURL('image/jpeg',0.84);
 }
 function openQuestionEditor(structureIndex,category,editIndex,onSaved,originalMeta=null){
- if(category==='normal'){
-  alert('As casas básicas usam exclusivamente as perguntas fixas do documento BMF1. Não é possível adicionar ou editar questões nessa categoria.');
-  return;
- }
-
  if(!adminUser){alert('Entre na área administrativa para adicionar ou editar questões.');openAdminLogin();return;}if(editIndex===null&&!canAddQuestions()){alert('Você não possui permissão para adicionar questões.');return;}if(editIndex!==null&&!canEditQuestions()){alert('Você não possui permissão para editar questões.');return;}
  const categories={normal:'Casa comum',microscope:'Casa do Microscópio',flash:'Casa Relâmpago',doctor:'Casa do Médico'};
  const originalSource=originalMeta?.original?(
-  category==='doctor'?(supplementalBanks.doctor||[])[editIndex]:
+  category==='doctor'?(supplementalBanks.doctor?.[String(structureIndex)]||[])[editIndex]:
   
   (initialTeamBanks[structureIndex]?.[category]||[])[editIndex]
  ):null;
@@ -621,14 +636,12 @@ function askQuestion(i,house,shared,n,forcedType){
  const type=forcedType||getHouseType(i,house),key=shared?'doctor':`${i}:${getHouseTypeKey(i,house)}:${type}`;
  const structureIndex=Number.isInteger(teams[i]?.structure)?teams[i].structure:i;const teamBank=initialTeamBanks[structureIndex]||initialTeamBanks[0];
  const rawPresetSource=type==='doctor'?(supplementalBanks.doctor[String(structureIndex)]||[]):type==='normal'?teamBank.normal||[]:type==='flash'?teamBank.flash||[]:type==='microscope'?teamBank.microscope||[]:[];
- const presetSource=type==='flash'?rawPresetSource.filter(q=>{const text=typeof q==='string'?q:String(q?.text||'');const answer=String(q?.answer||'').trim();return /^\s*(?:gabarito\s*:\s*)?(?:verdadeiro|falso)\b/i.test(answer)||/^verdadeiro\s+ou\s+falso\s*\?/i.test(text)||/^\s*(?:v|f)\s*[-:.)]/i.test(text);}):rawPresetSource;const preset=presetSource.map((q,idx)=>getOriginalQuestion(structureIndex,type,idx,q));
- const custom=questions[key]||[];
- const editorAdded=customQuestionsFor(structureIndex,type);
- // Casas comuns: exclusivamente as perguntas do documento BMF1 (banco fixo).
- // Perguntas locais antigas/adicionais não entram no sorteio das casas comuns.
- const allQuestions=[...preset,...editorAdded,...custom];
- // Casa Relâmpago: sorteio somente do banco fixo extraído do PDF anexado.
- const arr=type==='flash'?preset:allQuestions;
+ const presetSource=type==='flash'?rawPresetSource.filter(q=>{const text=typeof q==='string'?q:String(q?.text||'');const answer=String(q?.answer||'').trim();return /^\s*(?:gabarito\s*:\s*)?(?:verdadeiro|falso)\b/i.test(answer)||/^verdadeiro\s+ou\s+falso\s*\?/i.test(text)||/^\s*(?:v|f)\s*[-:.)]/i.test(text);}):rawPresetSource;const preset=presetSource.map((q,idx)=>({q:getOriginalQuestion(structureIndex,type,idx,q),idx})).filter(x=>!deletedOriginalQuestions[originalQuestionId(structureIndex,type,x.idx)]&&!hiddenQuestions[originalQuestionId(structureIndex,type,x.idx)]).map(x=>x.q);
+ const legacyCustom=(questions[key]||[]).filter((q,idx)=>!hiddenQuestions[originalQuestionId(structureIndex,type,idx)+':custom']);
+ const editorAdded=customQuestionsFor(structureIndex,type).filter((q,idx)=>!hiddenQuestions[originalQuestionId(structureIndex,type,idx)+':custom']);
+ // Casas comuns e Relâmpago usam exclusivamente os bancos-fonte aprovados; não misturam perguntas adicionais antigas.
+ const allQuestions=[...preset,...editorAdded,...legacyCustom];
+ const arr=(type==='flash'||type==='normal')?preset:allQuestions;
  used[key]=used[key]||[];
  let available=arr.map((q,j)=>({q,j})).filter(x=>!used[key].includes(x.j));
  if(!available.length&&arr.length){used[key]=[];available=arr.map((q,j)=>({q,j}));}
