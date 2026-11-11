@@ -109,7 +109,7 @@ const CUSTOM_BANK_STORAGE_KEY='trilhaHistologica_customQuestionBank_v1';
 let customQuestionBank={};
 try{customQuestionBank=JSON.parse(localStorage.getItem(CUSTOM_BANK_STORAGE_KEY)||'{}')||{};}catch(e){customQuestionBank={};}
 function saveCustomQuestionBank(){localStorage.setItem(CUSTOM_BANK_STORAGE_KEY,JSON.stringify(customQuestionBank));queueSharedSave('questions');}
-// Exclusões do banco original são registradas como ocultações compartilhadas, sem alterar as questões-fonte.
+// Exclusões antigas são mantidas para compatibilidade; não ocultam as afirmações fixas do PDF na Casa Relâmpago.
 const DELETED_ORIGINAL_KEY='trilhaHistologica_deletedOriginalQuestions_v1';
 let deletedOriginalQuestions={};
 try{deletedOriginalQuestions=JSON.parse(localStorage.getItem(DELETED_ORIGINAL_KEY)||'{}')||{};}catch(e){deletedOriginalQuestions={};}
@@ -424,7 +424,7 @@ function openQuestionBankOverview(){
    const originals=(data[k]||[]).map((q,i)=>({q:getOriginalQuestion(ti,k,i,q),i,kind:'base'}));
    const customSource=customQuestionsFor(ti,k);
    const customs=customSource.map((q,i)=>({q,i,kind:'custom'})).filter(x=>k!=='flash'||(()=>{const t=typeof x.q==='string'?x.q:String(x.q?.text||'');const a=String(x.q?.answer||'').trim();return /^\s*(?:gabarito\s*:\s*)?(?:verdadeiro|falso)\b/i.test(a)||/^verdadeiro\s+ou\s+falso\s*\?/i.test(t)||/^\s*(?:v|f)\s*[-:.)]/i.test(t);})());
-   const items=[...originals,...customs].filter(x=>!deletedOriginalQuestions[originalQuestionId(ti,k,x.i)+(x.kind==='custom'?':custom':'')]);
+   const items=[...originals,...customs].filter(x=>k==='flash'||!deletedOriginalQuestions[originalQuestionId(ti,k,x.i)+(x.kind==='custom'?':custom':'')]);
    const renderItem=(item,n)=>{
     const q=item.q,txt=typeof q==='string'?q:(q?.text||'Pergunta');
     const ans=typeof q==='object'?(q.answer||'Gabarito não cadastrado'):'Gabarito não cadastrado';
